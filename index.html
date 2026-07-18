@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RAG Status · SysManager</title>
+<link rel="stylesheet" href="styles.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+
+<div class="shell">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <svg class="brand-logo" viewBox="0 0 1147 201" xmlns="http://www.w3.org/2000/svg">
+          <path d="M71.0098 61.6001C69.6798 61.6001 68.3498 61.6501 67.0298 61.7001V86.8301C93.0598 86.8301 114.14 106.1 114.14 129.87C114.14 153.67 97.0898 173.74 67.0298 172.94C49.7298 172.49 19.6598 158.03 12.1598 124.28H0.629805C0.429805 126.44 0.299805 128.63 0.299805 130.86C0.299805 169.1 31.9598 200.08 71.0098 200.08C110.08 200.08 141.76 169.1 141.76 130.86C141.76 92.6201 110.08 61.6001 71.0098 61.6001Z" fill="#0066B3"/>
+          <path d="M78.2998 122.44C48.0698 112.03 27.5298 91.6701 27.5298 68.2401C27.5298 39.1101 59.2398 14.7501 101.8 8.35007L103.44 0.370056C100.66 0.180056 97.8298 0.0600586 94.9998 0.0600586C42.5598 0.0600586 0.0698242 32.0601 0.0698242 71.5601C0.0698242 105.73 31.8798 134.28 74.3798 141.36L78.2998 122.44Z" fill="#D83D96"/>
+          <path d="M196.95 75.4802C196.95 90.5002 246.92 83.5902 246.92 117.12C246.92 136.2 230.68 145.95 209.74 145.95C192.28 145.95 178.88 138.04 173.8 131.75C172.17 129.72 171.37 127.88 171.37 125.45C171.37 120.15 175.83 115.69 181.12 115.69C183.14 115.69 185.17 116.31 187.4 118.14C192.89 122.6 199.59 126.47 209.73 126.47C218.87 126.47 224.75 124.04 224.75 118.34C224.75 101.88 175.02 110.41 175.02 75.8902C175.02 57.6202 190.23 48.7002 208.93 48.7002C223.33 48.7002 236.12 54.1802 241.82 61.2902C243.05 62.9002 243.86 64.3402 243.86 67.3802C243.86 72.6402 239.39 77.1202 234.11 77.1202C231.27 77.1202 229.44 75.8802 227.19 74.2502C222.75 71.0202 217.24 67.7702 208.93 67.7702C201.44 67.7702 196.95 70.4002 196.95 75.4802Z" fill="#D83D96"/>
+          <path d="M286.96 137.21L255.69 65.1101C255.26 64.0901 254.87 62.6801 254.87 60.8501C254.87 54.7701 259.72 49.8901 265.82 49.8901C271.93 49.8901 274.99 54.1501 275.98 56.7801L298.32 113.24L320.65 56.7801C321.66 54.1501 324.71 49.8901 330.79 49.8901C336.91 49.8901 341.79 54.7701 341.79 60.8501C341.79 62.6801 341.38 64.1001 340.95 65.1101L303.19 150.37C294.24 170.29 281.45 184.52 261.15 184.52C255.26 184.52 250.61 180.26 250.61 174.38C250.61 168.48 255.26 164.22 261.15 164.22C274.17 164.23 280.26 153.87 286.96 137.21Z" fill="#D83D96"/>
+          <path d="M375.13 75.4802C375.13 90.5002 425.07 83.5902 425.07 117.12C425.07 136.2 408.83 145.95 387.92 145.95C370.46 145.95 357.04 138.04 351.96 131.75C350.35 129.72 349.53 127.88 349.53 125.45C349.53 120.15 353.99 115.69 359.28 115.69C361.32 115.69 363.33 116.31 365.56 118.14C371.07 122.6 377.75 126.47 387.91 126.47C397.04 126.47 402.93 124.04 402.93 118.34C402.93 101.88 353.17 110.41 353.17 75.8902C353.17 57.6202 368.4 48.7002 387.09 48.7002C401.51 48.7002 414.28 54.1802 419.98 61.2902C421.2 62.9002 422.02 64.3402 422.02 67.3802C422.02 72.6402 417.55 77.1202 412.27 77.1202C409.43 77.1202 407.6 75.8802 405.35 74.2502C400.91 71.0202 395.42 67.7702 387.09 67.7702C379.6 67.7702 375.13 70.4002 375.13 75.4802Z" fill="#D83D96"/>
+          <path d="M583.4 83.86V134.64C583.4 140.72 578.53 145.2 572.42 145.2C565.95 145.2 561.46 140.72 561.46 134.64V87.92C561.46 76.35 556.8 68.44 543.59 68.44C528.97 68.44 523.28 76.35 523.28 87.7V134.64C523.28 140.72 518.4 145.2 512.32 145.2C505.81 145.2 501.36 140.72 501.36 134.64V87.92C501.36 76.35 496.67 68.44 483.47 68.44C468.23 68.44 463.15 77.36 463.15 89.36V134.64C463.15 140.72 458.5 145.2 452.18 145.2C445.92 145.2 441.25 140.72 441.25 134.64V60.71C441.25 54.63 446.12 49.75 452.18 49.75C458.28 49.75 463.15 54.63 463.15 60.71C467.03 54.83 475.55 48.54 489.16 48.54C505.81 48.54 514.11 53.82 519.21 61.73C525.72 53 534.45 48.54 548.26 48.54C575.89 48.54 583.4 66.19 583.4 83.86Z" fill="#0066B3"/>
+          <path d="M618.8 75.73C616.77 77.16 615.15 77.78 612.72 77.78C607.44 77.78 603.16 73.52 603.16 68.22C603.16 65.99 603.98 63.56 605.81 61.53C611.49 55.24 621.63 48.54 639.12 48.54C664.28 48.54 679.32 60.91 679.32 82.45V134.45C679.32 140.33 674.44 145.21 668.56 145.21C662.66 145.21 657.8 140.33 657.8 134.45C652.3 143.18 643.37 146.22 631.18 146.22C611.26 146.22 598.09 133.83 598.09 115.54C598.09 96.67 613.31 86.91 630.98 86.91H657.57V83.27C657.57 74.13 650.88 68.03 639.1 68.03C630.18 68.02 623.9 72.09 618.8 75.73ZM657.59 109.66V103.98H633.83C624.91 103.98 620.02 108.22 620.02 115.53C620.02 123.26 625.54 127.94 636.85 127.94C647.65 127.95 657.59 121.03 657.59 109.66Z" fill="#0066B3"/>
+          <path d="M780.67 83.86V134.64C780.67 140.72 775.83 145.2 769.71 145.2C763.23 145.2 758.75 140.72 758.75 134.64V87.92C758.75 76.35 754.07 68.44 740.86 68.44C725.66 68.44 720.56 77.36 720.56 89.36V134.64C720.56 140.72 715.9 145.2 709.6 145.2C703.3 145.2 698.64 140.72 698.64 134.64V60.71C698.64 54.63 703.5 49.75 709.6 49.75C715.66 49.75 720.56 54.63 720.56 60.71C724.43 54.83 732.95 48.54 746.56 48.54C774.19 48.54 780.67 66.19 780.67 83.86Z" fill="#0066B3"/>
+          <path d="M816.07 75.73C814.02 77.16 812.42 77.78 809.97 77.78C804.69 77.78 800.43 73.52 800.43 68.22C800.43 65.99 801.23 63.56 803.06 61.53C808.74 55.24 818.9 48.54 836.39 48.54C861.55 48.54 876.59 60.91 876.59 82.45V134.45C876.59 140.33 871.71 145.21 865.81 145.21C859.91 145.21 855.05 140.33 855.05 134.45C849.57 143.18 840.65 146.22 828.45 146.22C808.53 146.22 795.34 133.83 795.34 115.54C795.34 96.67 810.56 86.91 828.21 86.91H854.84V83.27C854.84 74.13 848.13 68.03 836.37 68.03C827.44 68.02 821.13 72.09 816.07 75.73ZM854.85 109.66V103.98H831.09C822.16 103.98 817.28 108.22 817.28 115.53C817.28 123.26 822.76 127.94 834.11 127.94C844.91 127.95 854.85 121.03 854.85 109.66Z" fill="#0066B3"/>
+          <path d="M891.85 97.27C891.85 64.18 907.89 48.54 935.32 48.54C959.9 48.54 977.34 62.15 977.34 89.14V140.52C977.34 168.55 963.54 184.39 933.49 184.39C917.04 184.39 904.84 179.31 897.95 170.98C896.91 169.76 895.92 167.73 895.92 165.1C895.92 159.82 900.38 155.34 905.68 155.34C908.11 155.34 909.72 156.16 912.16 157.79C917.24 161.44 923.93 165.7 933.49 165.7C947.92 165.7 955.21 158.19 955.21 145.8V138.09C951.15 142.15 942.82 146.22 933.06 146.22C907.47 146.21 891.85 130.36 891.85 97.27ZM955.42 89.14C955.42 75.12 947.09 67.23 935.32 67.23C921.3 67.23 913.59 77.37 913.59 97.27C913.59 117.37 921.5 127.53 935.32 127.53C947.47 127.53 955.42 117.17 955.42 117.17V89.14Z" fill="#0066B3"/>
+          <path d="M1036.08 48.54C1070.39 48.54 1076.68 74.94 1076.68 88.94C1076.68 96.45 1076.68 105.17 1064.29 105.17H1014.13C1014.13 119.79 1024.49 126.51 1037.9 126.51C1046.84 126.51 1053.12 123.46 1058 120.22C1060.23 118.79 1061.87 117.99 1064.49 117.99C1069.79 117.99 1074.05 122.25 1074.05 127.53C1074.05 130.78 1072.42 133.43 1070.58 135.04C1067.12 138.29 1056.38 146.21 1037.89 146.21C1009.66 146.21 992.21 130.97 992.21 97.06C992.22 65.99 1008.43 48.54 1036.08 48.54ZM1014.75 86.91H1054.97C1054.97 76.97 1049.27 67.23 1036.08 67.23C1024.29 67.23 1015.76 73.92 1014.75 86.91Z" fill="#0066B3"/>
+          <path d="M1113.88 61.7303C1117.73 53.8203 1127.29 48.7402 1135.82 48.7402C1141.52 48.7402 1146.18 53.4003 1146.18 59.1003C1146.18 64.7803 1141.52 69.4602 1135.82 69.4602C1121.83 69.4602 1113.88 78.3802 1113.88 91.9902V134.22C1113.88 140.34 1109 145.2 1102.92 145.2C1096.82 145.2 1091.99 140.34 1091.99 134.22V60.7102C1091.99 54.6302 1096.83 49.7502 1102.92 49.7502C1109 49.7502 1113.88 54.6302 1113.88 60.7102V61.7303Z" fill="#0066B3"/>
+        </svg>
+        <div class="brand-divider"></div>
+        <div class="brand-tagline">RAG Status · Gestão Executiva</div>
+      </div>
+      <div class="topbar-meta">
+        <div class="topbar-label">Medição</div>
+        <div class="topbar-period" id="periodo-atual">—</div>
+      </div>
+    </div>
+    <nav>
+      <button class="tab active" data-view="painel">Painel</button>
+      <button class="tab" data-view="riscos">Riscos &amp; Problemas</button>
+      <button class="tab" data-view="organizacao">Organização</button>
+      <button class="tab" data-view="criterios">Critérios</button>
+      <button class="tab" data-view="admin">Admin</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="view-painel" class="view active">
+      <div class="cards-row" id="resumo-cards"></div>
+      <div class="toolbar">
+        <input type="text" id="filtro-busca" placeholder="Buscar cliente, AM ou DM…">
+        <select id="filtro-bu-director"><option value="">BU Director (todos)</option></select>
+        <select id="filtro-industry"><option value="">Industry Code (todos)</option></select>
+        <select id="filtro-somente-risco">
+          <option value="">Todos os status</option>
+          <option value="nao-verde">Apenas com pilar não-verde</option>
+        </select>
+        <button class="btn-secondary" id="btn-export-painel-excel">Exportar Excel</button>
+        <button class="btn-secondary" id="btn-export-painel-pdf">Exportar PDF</button>
+      </div>
+      <div id="painel-secoes"></div>
+    </section>
+
+    <section id="view-riscos" class="view">
+      <div class="toolbar">
+        <select id="risco-filtro-pilar"><option value="">Pilar (todos)</option></select>
+        <select id="risco-filtro-status">
+          <option value="">Status (todos)</option>
+          <option value="aberto">Aberto</option>
+          <option value="mitigando">Mitigando</option>
+          <option value="fechado">Fechado</option>
+        </select>
+        <select id="risco-filtro-severidade">
+          <option value="">Severidade (todas)</option>
+          <option value="baixa">Baixa</option>
+          <option value="media">Média</option>
+          <option value="alta">Alta</option>
+          <option value="critica">Crítica</option>
+        </select>
+        <div class="toolbar-spacer"></div>
+        <button class="btn-secondary" id="btn-export-riscos-excel">Exportar Excel</button>
+        <button class="btn-primary" id="btn-novo-risco">+ Novo Risco/Problema</button>
+      </div>
+      <div class="card">
+        <div class="table-wrap">
+          <table id="tabela-riscos">
+            <thead>
+              <tr>
+                <th>Cliente</th><th>Pilar</th><th>Tipo</th><th>Título</th><th>Severidade</th>
+                <th>Responsável</th><th>Data alvo</th><th>Status</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="riscos-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-organizacao" class="view">
+      <p class="hint">Estrutura BU Director → Account Manager (AM) → Delivery Manager (DM), somente leitura. Cadastro em Admin.</p>
+      <div class="org-toggle">
+        <button class="subtab active" data-org-view="cliente">Por Cliente</button>
+        <button class="subtab" data-org-view="pessoa">Por Pessoa</button>
+      </div>
+      <div id="org-conteudo"></div>
+    </section>
+
+    <section id="view-criterios" class="view">
+      <p class="hint">Tabela de critérios macro por pilar. Clique numa descrição para editar — as mudanças são
+        salvas automaticamente. Use isso para evoluir os critérios conforme o time amadurece a definição.</p>
+      <div class="card">
+        <div class="table-wrap">
+          <table id="tabela-criterios">
+            <thead>
+              <tr><th>Pilar</th><th>Linha</th><th class="col-g">G</th><th class="col-a">A</th><th class="col-r">R</th></tr>
+            </thead>
+            <tbody id="criterios-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-admin" class="view">
+      <div class="subtabs">
+        <button class="subtab active" data-admin-view="pessoas">Pessoas</button>
+        <button class="subtab" data-admin-view="clientes">Clientes</button>
+      </div>
+
+      <div id="admin-pessoas" class="subview active">
+        <div class="admin-form">
+          <h3 id="ap-form-titulo">Nova Pessoa</h3>
+          <input type="hidden" id="ap-id">
+          <label>Nome</label>
+          <input type="text" id="ap-nome" placeholder="Ex: Ana Souza">
+          <label>Papel</label>
+          <select id="ap-papel">
+            <option value="bu_director">BU Director</option>
+            <option value="am">AM (Account Manager)</option>
+            <option value="dm">DM (Delivery Manager)</option>
+          </select>
+          <label style="display:flex;align-items:center;gap:6px;margin-top:12px">
+            <input type="checkbox" id="ap-ativo" checked style="width:auto"> <span style="text-transform:none;font-weight:500">Ativo</span>
+          </label>
+          <div class="admin-form-actions">
+            <button class="btn-primary" id="ap-salvar">Salvar</button>
+            <button class="btn-secondary" id="ap-cancelar">Limpar</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Nome</th><th>Papel</th><th>Ativo</th><th></th></tr></thead>
+              <tbody id="admin-pessoas-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div id="admin-clientes" class="subview">
+        <div class="admin-form">
+          <h3 id="ac-form-titulo">Novo Cliente</h3>
+          <input type="hidden" id="ac-id">
+          <div class="grid-3">
+            <div>
+              <label>Nome</label>
+              <input type="text" id="ac-nome" placeholder="Ex: Acme Corp">
+            </div>
+            <div>
+              <label>Industry Code</label>
+              <input type="text" id="ac-industry" placeholder="Ex: GOV, BFSI, O&amp;G…">
+            </div>
+            <div>
+              <label>Tipo de linha</label>
+              <select id="ac-tipo-linha">
+                <option value="Projeto">Projeto</option>
+                <option value="Sustentação">Sustentação</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid-3">
+            <div>
+              <label>BU Director</label>
+              <select id="ac-bu-director"></select>
+            </div>
+            <div>
+              <label>AM (Account Manager)</label>
+              <select id="ac-am"></select>
+            </div>
+            <div>
+              <label>DM(s) (Delivery Manager) — ctrl/cmd+clique p/ vários</label>
+              <select id="ac-dms" multiple></select>
+            </div>
+          </div>
+          <label style="display:flex;align-items:center;gap:6px;margin-top:12px">
+            <input type="checkbox" id="ac-ativo" checked style="width:auto"> <span style="text-transform:none;font-weight:500">Ativo</span>
+          </label>
+          <div class="admin-form-actions">
+            <button class="btn-primary" id="ac-salvar">Salvar</button>
+            <button class="btn-secondary" id="ac-cancelar">Limpar</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Nome</th><th>Industry</th><th>BU Director</th><th>AM</th><th>DM(s)</th><th>Ativo</th><th></th></tr></thead>
+              <tbody id="admin-clientes-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="modal-overlay" id="modal-status">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modal-status-titulo">Atualizar status</h3>
+      <button class="modal-close" data-close-modal="modal-status">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="ms-cliente-id">
+      <input type="hidden" id="ms-pilar">
+      <label>Novo status</label>
+      <div class="status-picker" id="ms-status-picker">
+        <button type="button" class="status-opt" data-status="G"><span class="dot dot-g"></span> Verde</button>
+        <button type="button" class="status-opt" data-status="A"><span class="dot dot-a"></span> Âmbar</button>
+        <button type="button" class="status-opt" data-status="R"><span class="dot dot-r"></span> Vermelho</button>
+      </div>
+      <label>Comentário</label>
+      <textarea id="ms-comentario" rows="2" placeholder="O que mudou desde a última medição?"></textarea>
+      <label>Atualizado por</label>
+      <select id="ms-atualizado-por"></select>
+      <div id="ms-riscos-existentes" class="riscos-existentes hidden">
+        <label>Riscos/Problemas já abertos para este pilar</label>
+        <div id="ms-riscos-existentes-lista"></div>
+      </div>
+      <div id="ms-novo-risco" class="novo-risco hidden">
+        <div class="novo-risco-header">Risco/Problema (obrigatório para status não-verde)</div>
+        <label>Tipo</label>
+        <select id="ms-r-tipo">
+          <option value="risco">Risco</option>
+          <option value="problema">Problema</option>
+        </select>
+        <label>Título</label>
+        <input type="text" id="ms-r-titulo" placeholder="Ex: Atraso no faturamento por pendência de PO">
+        <label>Descrição</label>
+        <textarea id="ms-r-descricao" rows="2"></textarea>
+        <div class="grid-2">
+          <div>
+            <label>Severidade</label>
+            <select id="ms-r-severidade">
+              <option value="baixa">Baixa</option>
+              <option value="media" selected>Média</option>
+              <option value="alta">Alta</option>
+              <option value="critica">Crítica</option>
+            </select>
+          </div>
+          <div>
+            <label>Data alvo</label>
+            <input type="date" id="ms-r-data-alvo">
+          </div>
+        </div>
+        <label>Responsável pela mitigação</label>
+        <input type="text" id="ms-r-responsavel">
+        <label>Plano de mitigação</label>
+        <textarea id="ms-r-plano" rows="2"></textarea>
+      </div>
+      <div class="modal-error hidden" id="ms-erro"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" data-close-modal="modal-status">Cancelar</button>
+      <button class="btn-primary" id="ms-salvar">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-cliente">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <h3 id="mc-titulo">Cliente</h3>
+      <button class="modal-close" data-close-modal="modal-cliente">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="cliente-detalhe-pilares" id="mc-pilares"></div>
+      <h4>Equipe</h4>
+      <div id="mc-equipe" class="historico-lista"></div>
+      <h4>Histórico recente</h4>
+      <div id="mc-historico" class="historico-lista"></div>
+      <h4>Riscos &amp; Problemas vinculados</h4>
+      <div id="mc-riscos" class="historico-lista"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" data-close-modal="modal-cliente">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-novo-risco">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Novo Risco/Problema</h3>
+      <button class="modal-close" data-close-modal="modal-novo-risco">&times;</button>
+    </div>
+    <div class="modal-body">
+      <label>Cliente</label>
+      <select id="nr-cliente"></select>
+      <label>Pilar</label>
+      <select id="nr-pilar"></select>
+      <label>Tipo</label>
+      <select id="nr-tipo">
+        <option value="risco">Risco</option>
+        <option value="problema">Problema</option>
+      </select>
+      <label>Título</label>
+      <input type="text" id="nr-titulo">
+      <label>Descrição</label>
+      <textarea id="nr-descricao" rows="2"></textarea>
+      <div class="grid-2">
+        <div>
+          <label>Severidade</label>
+          <select id="nr-severidade">
+            <option value="baixa">Baixa</option>
+            <option value="media" selected>Média</option>
+            <option value="alta">Alta</option>
+            <option value="critica">Crítica</option>
+          </select>
+        </div>
+        <div>
+          <label>Data alvo</label>
+          <input type="date" id="nr-data-alvo">
+        </div>
+      </div>
+      <label>Responsável pela mitigação</label>
+      <input type="text" id="nr-responsavel">
+      <label>Plano de mitigação</label>
+      <textarea id="nr-plano" rows="2"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" data-close-modal="modal-novo-risco">Cancelar</button>
+      <button class="btn-primary" id="nr-salvar">Criar</button>
+    </div>
+  </div>
+</div>
+
+<div id="print-view"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
