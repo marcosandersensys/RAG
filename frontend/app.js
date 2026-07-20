@@ -1,6 +1,6 @@
 const PILAR_ORDEM = ["prazo", "escopo", "rh", "contrato", "faturamento"];
 const PILAR_LABELS = { prazo: "Prazo", escopo: "Escopo", rh: "RH", contrato: "Contrato", faturamento: "Faturamento" };
-const PAPEL_LABELS = { bu_director: "BU Director", am: "AM", dm: "DM" };
+const PAPEL_LABELS = { bu_director: "BU Director", am: "AM", dm: "DM", admin: "Admin" };
 const DIRECTOR_COLORS = ["var(--sys-magenta)", "var(--sys-blue)", "var(--sys-purple)"];
 
 const state = {
@@ -12,6 +12,11 @@ const state = {
   adminView: "pessoas",
 };
 
+const session = {
+  token: localStorage.getItem("rag-status:token") || null,
+  pessoa: null,
+};
+
 // ---------- helpers ----------
 
 function esc(s) {
@@ -20,11 +25,26 @@ function esc(s) {
   return d.innerHTML;
 }
 
-async function api(path, opts) {
-  const res = await fetch(path, opts && {
-    ...opts,
-    headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
-  });
+function salvarToken(token) {
+  session.token = token;
+  if (token) localStorage.setItem("rag-status:token", token);
+  else localStorage.removeItem("rag-status:token");
+}
+
+function limparSessao() {
+  salvarToken(null);
+  session.pessoa = null;
+}
+
+async function api(path, opts = {}) {
+  const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
+  if (session.token) headers["Authorization"] = "Bearer " + session.token;
+  const res = await fetch(path, { ...opts, headers });
+  if (res.status === 401) {
+    limparSessao();
+    mostrarLogin();
+    throw new Error("Sessão expirada. Faça login novamente.");
+  }
   if (!res.ok) {
     let detail;
     try { detail = (await res.json()).detail; } catch (e) { detail = null; }
@@ -47,12 +67,6 @@ function fmtDataLonga(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
   return d.toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
-}
-
-function lastUsedPessoaId(setVal) {
-  const key = "rag-status:atualizado-por-id";
-  if (setVal !== undefined) { localStorage.setItem(key, setVal); return; }
-  return localStorage.getItem(key) || "";
 }
 
 function pessoasAtivas(papel) {
@@ -102,8 +116,127 @@ document.querySelectorAll("[data-close-modal]").forEach(el => {
   el.addEventListener("click", () => closeModal(el.dataset.closeModal));
 });
 document.querySelectorAll(".modal-overlay").forEach(overlay => {
-  overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(overlay.id); });
+  overlay.addEventListener("click", (e) => {
+    if (e.target !== overlay) return;
+    if (overlay.id === "modal-trocar-senha" && overlay.dataset.forcada === "1") return;
+    closeModal(overlay.id);
+  });
 });
+
+// ---------- auth ----------
+
+function mostrarLogin() {
+  document.getElementById("app-shell").classList.add("hidden");
+  closeModal("modal-trocar-senha");
+  document.getElementById("view-login").classList.remove("hidden");
+  document.getElementById("login-erro").classList.add("hidden");
+  document.getElementById("login-senha").value = "";
+}
+
+function mostrarApp() {
+  document.getElementById("view-login").classList.add("hidden");
+  document.getElementById("app-shell").classList.remove("hidden");
+  document.getElementById("topbar-user-nome").textContent = session.pessoa.nome;
+  document.getElementById("tab-admin").classList.toggle("hidden", session.pessoa.papel !== "admin");
+}
+
+function mostrarTrocarSenha(forcada) {
+  document.getElementById("ts-erro").classList.add("hidden");
+  document.getElementById("ts-senha-atual").value = "";
+  document.getElementById("ts-senha-nova").value = "";
+  document.getElementById("ts-senha-confirmar").value = "";
+  document.getElementById("ts-aviso").textContent = forcada
+    ? "Este é o seu primeiro acesso (ou uma senha temporária foi definida). Defina uma nova senha para continuar."
+    : "Defina uma nova senha.";
+  document.getElementById("ts-fechar").classList.toggle("hidden", forcada);
+  document.getElementById("ts-cancelar").classList.toggle("hidden", forcada);
+  document.getElementById("modal-trocar-senha").dataset.forcada = forcada ? "1" : "0";
+  openModal("modal-trocar-senha");
+}
+
+async function entrarNaAplicacao() {
+  if (session.pessoa.precisa_trocar_senha) {
+    mostrarTrocarSenha(true);
+    return;
+  }
+  mostrarApp();
+  await loadPainel();
+}
+
+async function fazerLogin() {
+  const email = document.getElementById("login-email").value.trim();
+  const senha = document.getElementById("login-senha").value;
+  const erroEl = document.getElementById("login-erro");
+  erroEl.classList.add("hidden");
+  if (!email || !senha) {
+    erroEl.textContent = "Informe email e senha.";
+    erroEl.classList.remove("hidden");
+    return;
+  }
+  try {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, senha }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error((body.detail && body.detail.message) || body.detail || "Email ou senha inválidos.");
+    }
+    const data = await res.json();
+    salvarToken(data.token);
+    session.pessoa = data.pessoa;
+    await entrarNaAplicacao();
+  } catch (e) {
+    erroEl.textContent = e.message;
+    erroEl.classList.remove("hidden");
+  }
+}
+
+async function submeterTrocaSenha() {
+  const atual = document.getElementById("ts-senha-atual").value;
+  const nova = document.getElementById("ts-senha-nova").value;
+  const confirmar = document.getElementById("ts-senha-confirmar").value;
+  const erroEl = document.getElementById("ts-erro");
+  erroEl.classList.add("hidden");
+  if (!atual || !nova) {
+    erroEl.textContent = "Preencha todos os campos.";
+    erroEl.classList.remove("hidden");
+    return;
+  }
+  if (nova !== confirmar) {
+    erroEl.textContent = "A confirmação não confere com a nova senha.";
+    erroEl.classList.remove("hidden");
+    return;
+  }
+  try {
+    await api("/api/auth/trocar-senha", {
+      method: "POST",
+      body: JSON.stringify({ senha_atual: atual, senha_nova: nova }),
+    });
+    session.pessoa.precisa_trocar_senha = false;
+    closeModal("modal-trocar-senha");
+    mostrarApp();
+    await loadPainel();
+  } catch (e) {
+    erroEl.textContent = e.message;
+    erroEl.classList.remove("hidden");
+  }
+}
+
+async function fazerLogout() {
+  try { await api("/api/auth/logout", { method: "POST" }); } catch (e) { /* ignore */ }
+  limparSessao();
+  mostrarLogin();
+}
+
+document.getElementById("login-entrar").addEventListener("click", fazerLogin);
+["login-email", "login-senha"].forEach(id => {
+  document.getElementById(id).addEventListener("keydown", (e) => { if (e.key === "Enter") fazerLogin(); });
+});
+document.getElementById("btn-logout").addEventListener("click", fazerLogout);
+document.getElementById("btn-trocar-senha").addEventListener("click", () => mostrarTrocarSenha(false));
+document.getElementById("ts-salvar").addEventListener("click", submeterTrocaSenha);
 
 // ---------- load & render: PAINEL ----------
 
@@ -244,14 +377,6 @@ function renderPainelSecoes() {
 
 let msSelectedStatus = null;
 
-function populateAtualizadoPorSelect() {
-  const sel = document.getElementById("ms-atualizado-por");
-  const pessoas = pessoasAtivas();
-  sel.innerHTML = pessoas.map(p => `<option value="${p.id}">${esc(p.nome)} · ${PAPEL_LABELS[p.papel]}</option>`).join("");
-  const last = lastUsedPessoaId();
-  if (last && pessoas.some(p => String(p.id) === last)) sel.value = last;
-}
-
 function openStatusModal(clienteId, pilar) {
   const cliente = state.clientes.find(c => c.id === clienteId);
   if (!cliente) return;
@@ -260,7 +385,7 @@ function openStatusModal(clienteId, pilar) {
   document.getElementById("ms-pilar").value = pilar;
   document.getElementById("modal-status-titulo").textContent = `${cliente.nome} — ${PILAR_LABELS[pilar]}`;
   document.getElementById("ms-comentario").value = "";
-  populateAtualizadoPorSelect();
+  document.getElementById("ms-atualizado-por-hint").textContent = `Atualizado por ${session.pessoa.nome}`;
   document.getElementById("ms-erro").classList.add("hidden");
   document.getElementById("ms-r-titulo").value = "";
   document.getElementById("ms-r-descricao").value = "";
@@ -312,20 +437,16 @@ function updateNovoRiscoVisibility() {
 document.getElementById("ms-salvar").addEventListener("click", async () => {
   const clienteId = Number(document.getElementById("ms-cliente-id").value);
   const pilar = document.getElementById("ms-pilar").value;
-  const atualizadoPorId = document.getElementById("ms-atualizado-por").value;
-  const atualizadoPorPessoa = state.pessoas.find(p => String(p.id) === atualizadoPorId);
   const erroEl = document.getElementById("ms-erro");
   erroEl.classList.add("hidden");
 
   if (!msSelectedStatus) { erroEl.textContent = "Selecione um status."; erroEl.classList.remove("hidden"); return; }
-  if (!atualizadoPorPessoa) { erroEl.textContent = "Selecione quem está atualizando."; erroEl.classList.remove("hidden"); return; }
 
   const payload = {
     cliente_id: clienteId,
     pilar,
     status: msSelectedStatus,
     comentario: document.getElementById("ms-comentario").value.trim(),
-    atualizado_por: atualizadoPorPessoa.nome,
   };
 
   if (msSelectedStatus !== "G") {
@@ -347,7 +468,6 @@ document.getElementById("ms-salvar").addEventListener("click", async () => {
 
   try {
     await api("/api/status", { method: "POST", body: JSON.stringify(payload) });
-    lastUsedPessoaId(atualizadoPorId);
     closeModal("modal-status");
     await loadPainel();
     if (document.getElementById("view-riscos").classList.contains("active")) await loadRiscos();
@@ -682,8 +802,10 @@ function resetFormPessoa() {
   document.getElementById("ap-id").value = "";
   document.getElementById("ap-nome").value = "";
   document.getElementById("ap-papel").value = "am";
+  document.getElementById("ap-email").value = "";
   document.getElementById("ap-ativo").checked = true;
   document.getElementById("ap-form-titulo").textContent = "Nova Pessoa";
+  document.getElementById("ap-senha-hint").textContent = "Senha inicial: SysManager@2026 — a pessoa deverá trocar no primeiro acesso.";
 }
 
 async function loadAdminPessoas() {
@@ -693,11 +815,15 @@ async function loadAdminPessoas() {
   tbody.innerHTML = pessoas.length ? pessoas.map(p => `
     <tr>
       <td>${esc(p.nome)}</td>
-      <td><span class="badge papel-${p.papel}">${PAPEL_LABELS[p.papel]}</span></td>
+      <td>${esc(p.email || "—")}</td>
+      <td><span class="badge papel-${p.papel}">${PAPEL_LABELS[p.papel] || esc(p.papel)}</span></td>
       <td>${p.ativo ? "Sim" : "Não"}</td>
-      <td><button class="btn-small" data-editar-pessoa="${p.id}">Editar</button></td>
+      <td>
+        <button class="btn-small" data-editar-pessoa="${p.id}">Editar</button>
+        <button class="btn-small" data-resetar-senha="${p.id}">Resetar senha</button>
+      </td>
     </tr>
-  `).join("") : `<tr><td colspan="4" class="empty-state">Nenhuma pessoa cadastrada.</td></tr>`;
+  `).join("") : `<tr><td colspan="5" class="empty-state">Nenhuma pessoa cadastrada.</td></tr>`;
 
   tbody.querySelectorAll("[data-editar-pessoa]").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -706,9 +832,25 @@ async function loadAdminPessoas() {
       document.getElementById("ap-id").value = p.id;
       document.getElementById("ap-nome").value = p.nome;
       document.getElementById("ap-papel").value = p.papel;
+      document.getElementById("ap-email").value = p.email || "";
       document.getElementById("ap-ativo").checked = !!p.ativo;
       document.getElementById("ap-form-titulo").textContent = `Editando: ${p.nome}`;
+      document.getElementById("ap-senha-hint").textContent = "Deixe o email como está para não alterar o login.";
       window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  });
+
+  tbody.querySelectorAll("[data-resetar-senha]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const p = pessoas.find(x => x.id === Number(btn.dataset.resetarSenha));
+      if (!p) return;
+      if (!confirm(`Resetar a senha de ${p.nome} para a senha padrão (SysManager@2026)? A pessoa precisará trocá-la no próximo login.`)) return;
+      try {
+        await api(`/api/pessoas/${p.id}/resetar-senha`, { method: "POST" });
+        alert("Senha resetada para o padrão SysManager@2026.");
+      } catch (e) {
+        alert("Não foi possível resetar a senha: " + e.message);
+      }
     });
   });
 }
@@ -719,9 +861,11 @@ document.getElementById("ap-salvar").addEventListener("click", async () => {
   const nome = document.getElementById("ap-nome").value.trim();
   if (!nome) { alert("Informe o nome."); return; }
   const id = document.getElementById("ap-id").value;
+  const email = document.getElementById("ap-email").value.trim();
   const payload = {
     nome,
     papel: document.getElementById("ap-papel").value,
+    email: email || null,
     ativo: document.getElementById("ap-ativo").checked,
   };
   try {
@@ -948,11 +1092,24 @@ function setPeriodo() {
 async function init() {
   setPeriodo();
   populaFiltroPilarRiscos();
-  await loadPainel();
+
+  if (!session.token) {
+    mostrarLogin();
+    return;
+  }
+  try {
+    session.pessoa = await api("/api/auth/me");
+    await entrarNaAplicacao();
+  } catch (e) {
+    limparSessao();
+    mostrarLogin();
+  }
 }
 
 init().catch(err => {
   console.error(err);
-  document.querySelector(".shell").insertAdjacentHTML("afterbegin",
-    `<div class="modal-error" style="margin:20px 0">Falha ao carregar a aplicação: ${esc(err.message)}. Verifique se o backend está rodando.</div>`);
+  const erroEl = document.getElementById("login-erro");
+  erroEl.textContent = `Falha ao carregar a aplicação: ${err.message}. Verifique se o backend está rodando.`;
+  erroEl.classList.remove("hidden");
+  mostrarLogin();
 });

@@ -7,7 +7,11 @@ Tudo em um único arquivo (sem `from db import ...`) porque o runtime Python
 da Vercel não adiciona o diretório do próprio módulo ao sys.path, então um
 `db.py` irmão dá ModuleNotFoundError em produção.
 """
+import hashlib
+import hmac
 import os
+import re
+import secrets
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
@@ -15,10 +19,14 @@ from typing import List, Optional
 
 import psycopg2
 import psycopg2.extras
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
 PILARES = ["prazo", "escopo", "rh", "contrato", "faturamento"]
+PAPEIS = ("bu_director", "am", "dm", "admin")
+
+SENHA_PADRAO = "SysManager@2026"
+SESSAO_DIAS = 7
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS pessoas (
@@ -27,6 +35,11 @@ CREATE TABLE IF NOT EXISTS pessoas (
     papel TEXT NOT NULL,
     ativo INTEGER NOT NULL DEFAULT 1
 );
+
+ALTER TABLE pessoas ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE pessoas ADD COLUMN IF NOT EXISTS senha_hash TEXT;
+ALTER TABLE pessoas ADD COLUMN IF NOT EXISTS precisa_trocar_senha INTEGER NOT NULL DEFAULT 1;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pessoas_email ON pessoas(email);
 
 CREATE TABLE IF NOT EXISTS clientes (
     id SERIAL PRIMARY KEY,
@@ -85,6 +98,15 @@ CREATE TABLE IF NOT EXISTS criterios (
     descricao TEXT NOT NULL,
     ordem INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS sessoes (
+    token TEXT PRIMARY KEY,
+    pessoa_id INTEGER NOT NULL REFERENCES pessoas(id),
+    criado_em TEXT NOT NULL,
+    expira_em TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessoes_expira ON sessoes(expira_em);
 """
 
 
@@ -104,6 +126,9 @@ class _ConnWrapper:
 
     def commit(self):
         self._conn.commit()
+
+    def rollback(self):
+        self._conn.rollback()
 
     def close(self):
         self._conn.close()
@@ -141,6 +166,84 @@ PILAR_LABELS = {
 }
 
 
+# ---------- Senhas ----------
+
+def _hash_senha(senha: str, salt: Optional[bytes] = None) -> str:
+    salt = salt or secrets.token_bytes(16)
+    h = hashlib.pbkdf2_hmac("sha256", senha.encode("utf-8"), salt, 200_000)
+    return salt.hex() + ":" + h.hex()
+
+
+def _verificar_senha(senha: str, senha_hash: Optional[str]) -> bool:
+    if not senha_hash or ":" not in senha_hash:
+        return False
+    salt_hex, hash_hex = senha_hash.split(":", 1)
+    try:
+        salt = bytes.fromhex(salt_hex)
+    except ValueError:
+        return False
+    h = hashlib.pbkdf2_hmac("sha256", senha.encode("utf-8"), salt, 200_000)
+    return hmac.compare_digest(h.hex(), hash_hex)
+
+
+def _validar_senha_forte(senha: str):
+    if len(senha) < 10:
+        raise HTTPException(400, "A senha deve ter pelo menos 10 caracteres.")
+    if not re.search(r"[A-Z]", senha):
+        raise HTTPException(400, "A senha deve conter ao menos uma letra maiúscula.")
+    if not re.search(r"[a-z]", senha):
+        raise HTTPException(400, "A senha deve conter ao menos uma letra minúscula.")
+    if not re.search(r"\d", senha):
+        raise HTTPException(400, "A senha deve conter ao menos um número.")
+    if not re.search(r"[^A-Za-z0-9]", senha):
+        raise HTTPException(400, "A senha deve conter ao menos um caractere especial.")
+
+
+def get_current_pessoa(authorization: Optional[str] = Header(None)) -> dict:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Não autenticado")
+    token = authorization[len("Bearer "):].strip()
+    conn = get_conn()
+    row = conn.execute(
+        """SELECT p.id, p.nome, p.papel, p.email, p.precisa_trocar_senha, p.ativo
+           FROM sessoes s JOIN pessoas p ON p.id = s.pessoa_id
+           WHERE s.token=? AND s.expira_em > ?""",
+        (token, now_iso()),
+    ).fetchone()
+    conn.close()
+    if not row or not row["ativo"]:
+        raise HTTPException(401, "Sessão inválida ou expirada")
+    return dict(row)
+
+
+def _require_admin(pessoa: dict):
+    if pessoa["papel"] != "admin":
+        raise HTTPException(403, "Acesso restrito ao administrador")
+
+
+def _clientes_visiveis_ids(conn, pessoa: dict):
+    """None => acesso total (admin). Caso contrário, set de cliente_id permitidos."""
+    if pessoa["papel"] == "admin":
+        return None
+    ids = set()
+    if pessoa["papel"] == "bu_director":
+        rows = conn.execute("SELECT id FROM clientes WHERE bu_director_id=?", (pessoa["id"],)).fetchall()
+        ids.update(r["id"] for r in rows)
+    elif pessoa["papel"] == "am":
+        rows = conn.execute("SELECT id FROM clientes WHERE am_id=?", (pessoa["id"],)).fetchall()
+        ids.update(r["id"] for r in rows)
+    elif pessoa["papel"] == "dm":
+        rows = conn.execute("SELECT cliente_id FROM cliente_dms WHERE dm_id=?", (pessoa["id"],)).fetchall()
+        ids.update(r["cliente_id"] for r in rows)
+    return ids
+
+
+def _garantir_acesso_cliente(conn, pessoa: dict, cliente_id: int):
+    ids = _clientes_visiveis_ids(conn, pessoa)
+    if ids is not None and cliente_id not in ids:
+        raise HTTPException(403, "Sem acesso a este cliente")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
@@ -174,12 +277,14 @@ class ClienteUpdate(BaseModel):
 class PessoaIn(BaseModel):
     nome: str
     papel: str
+    email: Optional[str] = None
 
 
 class PessoaUpdate(BaseModel):
     nome: Optional[str] = None
     papel: Optional[str] = None
     ativo: Optional[bool] = None
+    email: Optional[str] = None
 
 
 class RiscoIn(BaseModel):
@@ -210,7 +315,6 @@ class StatusIn(BaseModel):
     pilar: str
     status: str
     comentario: Optional[str] = ""
-    atualizado_por: str
     semana: Optional[str] = None
     risco: Optional[RiscoIn] = None
 
@@ -220,7 +324,14 @@ class CriterioUpdate(BaseModel):
     linha: Optional[str] = None
 
 
-PAPEIS = ("bu_director", "am", "dm")
+class LoginIn(BaseModel):
+    email: str
+    senha: str
+
+
+class TrocarSenhaIn(BaseModel):
+    senha_atual: str
+    senha_nova: str
 
 
 def _validate_pilar(pilar: str):
@@ -322,18 +433,111 @@ def _all_dms(conn) -> dict:
     return result
 
 
+# ---------- Auth ----------
+
+@app.post("/api/auth/login")
+def login(payload: LoginIn):
+    conn = get_conn()
+    email = payload.email.strip().lower()
+    row = conn.execute("SELECT * FROM pessoas WHERE email=?", (email,)).fetchone()
+    if not row or not row["ativo"] or not _verificar_senha(payload.senha, row["senha_hash"]):
+        conn.close()
+        raise HTTPException(401, "Email ou senha inválidos")
+    token = secrets.token_urlsafe(32)
+    criado = now_iso()
+    expira = (datetime.now() + timedelta(days=SESSAO_DIAS)).isoformat(timespec="seconds")
+    conn.execute(
+        "INSERT INTO sessoes (token, pessoa_id, criado_em, expira_em) VALUES (?, ?, ?, ?)",
+        (token, row["id"], criado, expira),
+    )
+    conn.commit()
+    conn.close()
+    return {
+        "token": token,
+        "pessoa": {
+            "id": row["id"],
+            "nome": row["nome"],
+            "papel": row["papel"],
+            "precisa_trocar_senha": bool(row["precisa_trocar_senha"]),
+        },
+    }
+
+
+@app.get("/api/auth/me")
+def auth_me(pessoa: dict = Depends(get_current_pessoa)):
+    return {
+        "id": pessoa["id"],
+        "nome": pessoa["nome"],
+        "papel": pessoa["papel"],
+        "precisa_trocar_senha": bool(pessoa["precisa_trocar_senha"]),
+    }
+
+
+@app.post("/api/auth/logout")
+def logout(authorization: Optional[str] = Header(None)):
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[len("Bearer "):].strip()
+        conn = get_conn()
+        conn.execute("DELETE FROM sessoes WHERE token=?", (token,))
+        conn.commit()
+        conn.close()
+    return {"ok": True}
+
+
+@app.post("/api/auth/trocar-senha")
+def trocar_senha(payload: TrocarSenhaIn, pessoa: dict = Depends(get_current_pessoa)):
+    conn = get_conn()
+    row = conn.execute("SELECT senha_hash FROM pessoas WHERE id=?", (pessoa["id"],)).fetchone()
+    if not row or not _verificar_senha(payload.senha_atual, row["senha_hash"]):
+        conn.close()
+        raise HTTPException(400, "Senha atual incorreta")
+    _validar_senha_forte(payload.senha_nova)
+    if _verificar_senha(payload.senha_nova, row["senha_hash"]):
+        conn.close()
+        raise HTTPException(400, "A nova senha deve ser diferente da atual")
+    novo_hash = _hash_senha(payload.senha_nova)
+    conn.execute(
+        "UPDATE pessoas SET senha_hash=?, precisa_trocar_senha=0 WHERE id=?",
+        (novo_hash, pessoa["id"]),
+    )
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+@app.post("/api/pessoas/{pessoa_id}/resetar-senha")
+def resetar_senha(pessoa_id: int, pessoa: dict = Depends(get_current_pessoa)):
+    _require_admin(pessoa)
+    conn = get_conn()
+    alvo = conn.execute("SELECT id FROM pessoas WHERE id=?", (pessoa_id,)).fetchone()
+    if not alvo:
+        conn.close()
+        raise HTTPException(404, "Pessoa não encontrada")
+    conn.execute(
+        "UPDATE pessoas SET senha_hash=?, precisa_trocar_senha=1 WHERE id=?",
+        (_hash_senha(SENHA_PADRAO), pessoa_id),
+    )
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
 # ---------- Clientes ----------
 
 @app.get("/api/pilares")
-def listar_pilares():
+def listar_pilares(pessoa: dict = Depends(get_current_pessoa)):
     return [{"key": p, "label": PILAR_LABELS[p]} for p in PILARES]
 
 
 @app.get("/api/clientes")
-def listar_clientes():
+def listar_clientes(pessoa: dict = Depends(get_current_pessoa)):
     conn = get_conn()
-    clientes = conn.execute(
-        """
+    ids = _clientes_visiveis_ids(conn, pessoa)
+    if ids is not None and not ids:
+        conn.close()
+        return []
+
+    query = """
         SELECT c.id AS cliente_id, c.nome AS cliente_nome, c.industry_code, c.tipo_linha,
                bd.id AS bud_id, bd.nome AS bud_nome, bd.papel AS bud_papel,
                amp.id AS amp_id, amp.nome AS amp_nome, amp.papel AS amp_papel
@@ -341,9 +545,14 @@ def listar_clientes():
         LEFT JOIN pessoas bd ON bd.id = c.bu_director_id
         LEFT JOIN pessoas amp ON amp.id = c.am_id
         WHERE c.ativo = 1
-        ORDER BY c.nome
-        """
-    ).fetchall()
+    """
+    params = []
+    if ids is not None:
+        query += " AND c.id = ANY(?)"
+        params.append(list(ids))
+    query += " ORDER BY c.nome"
+
+    clientes = conn.execute(query, params).fetchall()
 
     status_por_cliente = _all_current_status(conn)
     riscos_por_cliente = _all_riscos_abertos_counts(conn)
@@ -374,8 +583,9 @@ def listar_clientes():
 
 
 @app.get("/api/clientes/{cliente_id}")
-def detalhe_cliente(cliente_id: int):
+def detalhe_cliente(cliente_id: int, pessoa: dict = Depends(get_current_pessoa)):
     conn = get_conn()
+    _garantir_acesso_cliente(conn, pessoa, cliente_id)
     c = conn.execute("SELECT * FROM clientes WHERE id=?", (cliente_id,)).fetchone()
     if not c:
         conn.close()
@@ -412,7 +622,8 @@ def detalhe_cliente(cliente_id: int):
 
 
 @app.post("/api/clientes")
-def criar_cliente(payload: ClienteIn):
+def criar_cliente(payload: ClienteIn, pessoa: dict = Depends(get_current_pessoa)):
+    _require_admin(pessoa)
     conn = get_conn()
     cur = conn.execute(
         """INSERT INTO clientes (nome, industry_code, tipo_linha, bu_director_id, am_id)
@@ -425,8 +636,6 @@ def criar_cliente(payload: ClienteIn):
     if payload.dm_ids:
         _set_cliente_dms(conn, cliente_id, payload.dm_ids)
 
-    am = _pessoa_ref(conn, payload.am_id)
-    atualizado_por = am["nome"] if am else "Cadastro"
     ts = now_iso()
     semana = current_week_monday()
     for pilar in PILARES:
@@ -434,7 +643,7 @@ def criar_cliente(payload: ClienteIn):
             """INSERT INTO status_history
                (cliente_id, pilar, status, semana, comentario, atualizado_por, atualizado_em)
                VALUES (?, ?, 'G', ?, 'Cliente criado', ?, ?)""",
-            (cliente_id, pilar, semana, atualizado_por, ts),
+            (cliente_id, pilar, semana, pessoa["nome"], ts),
         )
     conn.commit()
     conn.close()
@@ -442,7 +651,8 @@ def criar_cliente(payload: ClienteIn):
 
 
 @app.put("/api/clientes/{cliente_id}")
-def editar_cliente(cliente_id: int, payload: ClienteUpdate):
+def editar_cliente(cliente_id: int, payload: ClienteUpdate, pessoa: dict = Depends(get_current_pessoa)):
+    _require_admin(pessoa)
     conn = get_conn()
     c = conn.execute("SELECT * FROM clientes WHERE id=?", (cliente_id,)).fetchone()
     if not c:
@@ -466,9 +676,13 @@ def editar_cliente(cliente_id: int, payload: ClienteUpdate):
 # ---------- Pessoas ----------
 
 @app.get("/api/pessoas")
-def listar_pessoas(papel: Optional[str] = None, ativo: Optional[bool] = None):
+def listar_pessoas(papel: Optional[str] = None, ativo: Optional[bool] = None,
+                    pessoa: dict = Depends(get_current_pessoa)):
     conn = get_conn()
-    query = "SELECT * FROM pessoas WHERE 1=1"
+    campos = "id, nome, papel, ativo"
+    if pessoa["papel"] == "admin":
+        campos += ", email, precisa_trocar_senha"
+    query = f"SELECT {campos} FROM pessoas WHERE 1=1"
     params = []
     if papel:
         query += " AND papel = ?"
@@ -483,20 +697,30 @@ def listar_pessoas(papel: Optional[str] = None, ativo: Optional[bool] = None):
 
 
 @app.post("/api/pessoas")
-def criar_pessoa(payload: PessoaIn):
+def criar_pessoa(payload: PessoaIn, pessoa: dict = Depends(get_current_pessoa)):
+    _require_admin(pessoa)
     _validate_papel(payload.papel)
     conn = get_conn()
-    cur = conn.execute(
-        "INSERT INTO pessoas (nome, papel) VALUES (?, ?) RETURNING id", (payload.nome, payload.papel)
-    )
-    pessoa_id = cur.fetchone()["id"]
-    conn.commit()
+    email = payload.email.strip().lower() if payload.email else None
+    try:
+        cur = conn.execute(
+            """INSERT INTO pessoas (nome, papel, email, senha_hash, precisa_trocar_senha)
+               VALUES (?, ?, ?, ?, 1) RETURNING id""",
+            (payload.nome, payload.papel, email, _hash_senha(SENHA_PADRAO)),
+        )
+        pessoa_id = cur.fetchone()["id"]
+        conn.commit()
+    except psycopg2.IntegrityError:
+        conn.rollback()
+        conn.close()
+        raise HTTPException(400, "Já existe uma pessoa cadastrada com este email")
     conn.close()
     return {"id": pessoa_id}
 
 
 @app.put("/api/pessoas/{pessoa_id}")
-def editar_pessoa(pessoa_id: int, payload: PessoaUpdate):
+def editar_pessoa(pessoa_id: int, payload: PessoaUpdate, pessoa: dict = Depends(get_current_pessoa)):
+    _require_admin(pessoa)
     if payload.papel is not None:
         _validate_papel(payload.papel)
     conn = get_conn()
@@ -505,11 +729,18 @@ def editar_pessoa(pessoa_id: int, payload: PessoaUpdate):
         conn.close()
         raise HTTPException(404, "Pessoa não encontrada")
     fields = payload.model_dump(exclude_unset=True)
+    if "email" in fields and fields["email"]:
+        fields["email"] = fields["email"].strip().lower()
     if fields:
         set_clause = ", ".join(f"{k}=?" for k in fields)
         values = list(fields.values()) + [pessoa_id]
-        conn.execute(f"UPDATE pessoas SET {set_clause} WHERE id=?", values)
-        conn.commit()
+        try:
+            conn.execute(f"UPDATE pessoas SET {set_clause} WHERE id=?", values)
+            conn.commit()
+        except psycopg2.IntegrityError:
+            conn.rollback()
+            conn.close()
+            raise HTTPException(400, "Já existe uma pessoa cadastrada com este email")
     conn.close()
     return {"ok": True}
 
@@ -517,12 +748,13 @@ def editar_pessoa(pessoa_id: int, payload: PessoaUpdate):
 # ---------- Status ----------
 
 @app.post("/api/status")
-def registrar_status(payload: StatusIn):
+def registrar_status(payload: StatusIn, pessoa: dict = Depends(get_current_pessoa)):
     _validate_pilar(payload.pilar)
     if payload.status not in ("G", "A", "R"):
         raise HTTPException(400, "Status deve ser G, A ou R")
 
     conn = get_conn()
+    _garantir_acesso_cliente(conn, pessoa, payload.cliente_id)
     cliente = conn.execute("SELECT id FROM clientes WHERE id=?", (payload.cliente_id,)).fetchone()
     if not cliente:
         conn.close()
@@ -562,7 +794,7 @@ def registrar_status(payload: StatusIn):
            (cliente_id, pilar, status, semana, comentario, atualizado_por, atualizado_em)
            VALUES (?, ?, ?, ?, ?, ?, ?)""",
         (payload.cliente_id, payload.pilar, payload.status, semana,
-         payload.comentario, payload.atualizado_por, ts),
+         payload.comentario, pessoa["nome"], ts),
     )
     conn.commit()
     conn.close()
@@ -573,8 +805,14 @@ def registrar_status(payload: StatusIn):
 
 @app.get("/api/riscos")
 def listar_riscos(pilar: Optional[str] = None, status: Optional[str] = None,
-                   severidade: Optional[str] = None, cliente_id: Optional[int] = None):
+                   severidade: Optional[str] = None, cliente_id: Optional[int] = None,
+                   pessoa: dict = Depends(get_current_pessoa)):
     conn = get_conn()
+    ids = _clientes_visiveis_ids(conn, pessoa)
+    if ids is not None and not ids:
+        conn.close()
+        return []
+
     query = """
         SELECT ri.*, c.nome AS cliente_nome
         FROM riscos_issues ri
@@ -582,6 +820,9 @@ def listar_riscos(pilar: Optional[str] = None, status: Optional[str] = None,
         WHERE 1=1
     """
     params = []
+    if ids is not None:
+        query += " AND ri.cliente_id = ANY(?)"
+        params.append(list(ids))
     if pilar:
         query += " AND ri.pilar = ?"
         params.append(pilar)
@@ -602,9 +843,10 @@ def listar_riscos(pilar: Optional[str] = None, status: Optional[str] = None,
 
 
 @app.post("/api/riscos")
-def criar_risco(payload: RiscoIn):
+def criar_risco(payload: RiscoIn, pessoa: dict = Depends(get_current_pessoa)):
     _validate_pilar(payload.pilar)
     conn = get_conn()
+    _garantir_acesso_cliente(conn, pessoa, payload.cliente_id)
     cliente = conn.execute("SELECT id FROM clientes WHERE id=?", (payload.cliente_id,)).fetchone()
     if not cliente:
         conn.close()
@@ -626,12 +868,13 @@ def criar_risco(payload: RiscoIn):
 
 
 @app.put("/api/riscos/{risco_id}")
-def editar_risco(risco_id: int, payload: RiscoUpdate):
+def editar_risco(risco_id: int, payload: RiscoUpdate, pessoa: dict = Depends(get_current_pessoa)):
     conn = get_conn()
     r = conn.execute("SELECT * FROM riscos_issues WHERE id=?", (risco_id,)).fetchone()
     if not r:
         conn.close()
         raise HTTPException(404, "Risco/Problema não encontrado")
+    _garantir_acesso_cliente(conn, pessoa, r["cliente_id"])
 
     fields = payload.model_dump(exclude_unset=True)
     if fields:
@@ -647,7 +890,7 @@ def editar_risco(risco_id: int, payload: RiscoUpdate):
 # ---------- Critérios ----------
 
 @app.get("/api/criterios")
-def listar_criterios():
+def listar_criterios(pessoa: dict = Depends(get_current_pessoa)):
     conn = get_conn()
     rows = conn.execute("SELECT * FROM criterios ORDER BY ordem").fetchall()
     conn.close()
@@ -655,7 +898,8 @@ def listar_criterios():
 
 
 @app.put("/api/criterios/{criterio_id}")
-def editar_criterio(criterio_id: int, payload: CriterioUpdate):
+def editar_criterio(criterio_id: int, payload: CriterioUpdate, pessoa: dict = Depends(get_current_pessoa)):
+    _require_admin(pessoa)
     conn = get_conn()
     c = conn.execute("SELECT * FROM criterios WHERE id=?", (criterio_id,)).fetchone()
     if not c:
@@ -674,14 +918,32 @@ def editar_criterio(criterio_id: int, payload: CriterioUpdate):
 # ---------- Dashboard resumo ----------
 
 @app.get("/api/dashboard/resumo")
-def resumo():
+def resumo(pessoa: dict = Depends(get_current_pessoa)):
     conn = get_conn()
-    clientes = conn.execute("SELECT id FROM clientes WHERE ativo=1").fetchall()
+    ids = _clientes_visiveis_ids(conn, pessoa)
+    if ids is not None and not ids:
+        conn.close()
+        return {
+            "total_clientes": 0,
+            "clientes_criticos": 0,
+            "riscos_abertos": 0,
+            "contagem_por_pilar": {p: {"G": 0, "A": 0, "R": 0} for p in PILARES},
+        }
+
+    query = "SELECT id FROM clientes WHERE ativo=1"
+    params = []
+    if ids is not None:
+        query += " AND id = ANY(?)"
+        params.append(list(ids))
+    clientes = conn.execute(query, params).fetchall()
     status_por_cliente = _all_current_status(conn)
 
-    riscos_abertos = conn.execute(
-        "SELECT COUNT(*) c FROM riscos_issues WHERE status != 'fechado'"
-    ).fetchone()["c"]
+    riscos_query = "SELECT COUNT(*) c FROM riscos_issues WHERE status != 'fechado'"
+    riscos_params = []
+    if ids is not None:
+        riscos_query += " AND cliente_id = ANY(?)"
+        riscos_params.append(list(ids))
+    riscos_abertos = conn.execute(riscos_query, riscos_params).fetchone()["c"]
     conn.close()
 
     contagem = {p: {"G": 0, "A": 0, "R": 0} for p in PILARES}

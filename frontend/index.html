@@ -9,7 +9,56 @@
 </head>
 <body>
 
-<div class="shell">
+<!-- LOGIN -->
+<div class="auth-screen" id="view-login">
+  <div class="auth-card">
+    <div class="brand auth-brand">
+      <svg class="brand-logo" viewBox="0 0 1147 201" xmlns="http://www.w3.org/2000/svg">
+        <path d="M71.0098 61.6001C69.6798 61.6001 68.3498 61.6501 67.0298 61.7001V86.8301C93.0598 86.8301 114.14 106.1 114.14 129.87C114.14 153.67 97.0898 173.74 67.0298 172.94C49.7298 172.49 19.6598 158.03 12.1598 124.28H0.629805C0.429805 126.44 0.299805 128.63 0.299805 130.86C0.299805 169.1 31.9598 200.08 71.0098 200.08C110.08 200.08 141.76 169.1 141.76 130.86C141.76 92.6201 110.08 61.6001 71.0098 61.6001Z" fill="#0066B3"/>
+        <path d="M78.2998 122.44C48.0698 112.03 27.5298 91.6701 27.5298 68.2401C27.5298 39.1101 59.2398 14.7501 101.8 8.35007L103.44 0.370056C100.66 0.180056 97.8298 0.0600586 94.9998 0.0600586C42.5598 0.0600586 0.0698242 32.0601 0.0698242 71.5601C0.0698242 105.73 31.8798 134.28 74.3798 141.36L78.2998 122.44Z" fill="#D83D96"/>
+        <path d="M196.95 75.4802C196.95 90.5002 246.92 83.5902 246.92 117.12C246.92 136.2 230.68 145.95 209.74 145.95C192.28 145.95 178.88 138.04 173.8 131.75C172.17 129.72 171.37 127.88 171.37 125.45C171.37 120.15 175.83 115.69 181.12 115.69C183.14 115.69 185.17 116.31 187.4 118.14C192.89 122.6 199.59 126.47 209.73 126.47C218.87 126.47 224.75 124.04 224.75 118.34C224.75 101.88 175.02 110.41 175.02 75.8902C175.02 57.6202 190.23 48.7002 208.93 48.7002C223.33 48.7002 236.12 54.1802 241.82 61.2902C243.05 62.9002 243.86 64.3402 243.86 67.3802C243.86 72.6402 239.39 77.1202 234.11 77.1202C231.27 77.1202 229.44 75.8802 227.19 74.2502C222.75 71.0202 217.24 67.7702 208.93 67.7702C201.44 67.7702 196.95 70.4002 196.95 75.4802Z" fill="#D83D96"/>
+        <path d="M286.96 137.21L255.69 65.1101C255.26 64.0901 254.87 62.6801 254.87 60.8501C254.87 54.7701 259.72 49.8901 265.82 49.8901C271.93 49.8901 274.99 54.1501 275.98 56.7801L298.32 113.24L320.65 56.7801C321.66 54.1501 324.71 49.8901 330.79 49.8901C336.91 49.8901 341.79 54.7701 341.79 60.8501C341.79 62.6801 341.38 64.1001 340.95 65.1101L303.19 150.37C294.24 170.29 281.45 184.52 261.15 184.52C255.26 184.52 250.61 180.26 250.61 174.38C250.61 168.48 255.26 164.22 261.15 164.22C274.17 164.23 280.26 153.87 286.96 137.21Z" fill="#D83D96"/>
+        <path d="M375.13 75.4802C375.13 90.5002 425.07 83.5902 425.07 117.12C425.07 136.2 408.83 145.95 387.92 145.95C370.46 145.95 357.04 138.04 351.96 131.75C350.35 129.72 349.53 127.88 349.53 125.45C349.53 120.15 353.99 115.69 359.28 115.69C361.32 115.69 363.33 116.31 365.56 118.14C371.07 122.6 377.75 126.47 387.91 126.47C397.04 126.47 402.93 124.04 402.93 118.34C402.93 101.88 353.17 110.41 353.17 75.8902C353.17 57.6202 368.4 48.7002 387.09 48.7002C401.51 48.7002 414.28 54.1802 419.98 61.2902C421.2 62.9002 422.02 64.3402 422.02 67.3802C422.02 72.6402 417.55 77.1202 412.27 77.1202C409.43 77.1202 407.6 75.8802 405.35 74.2502C400.91 71.0202 395.42 67.7702 387.09 67.7702C379.6 67.7702 375.13 70.4002 375.13 75.4802Z" fill="#D83D96"/>
+      </svg>
+      <div class="brand-divider"></div>
+      <div class="brand-tagline">RAG Status · Gestão Executiva</div>
+    </div>
+    <h3 class="auth-title">Entrar</h3>
+    <label>Email SysManager</label>
+    <input type="email" id="login-email" placeholder="nome.sobrenome@sysmanager.com.br" autocomplete="username">
+    <label>Senha</label>
+    <input type="password" id="login-senha" placeholder="Sua senha" autocomplete="current-password">
+    <div class="modal-error hidden" id="login-erro"></div>
+    <button class="btn-primary auth-submit" id="login-entrar">Entrar</button>
+  </div>
+</div>
+
+<!-- TROCAR SENHA (forçada no 1º acesso, ou voluntária) -->
+<div class="modal-overlay" id="modal-trocar-senha">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Trocar senha</h3>
+      <button class="modal-close hidden" id="ts-fechar" data-close-modal="modal-trocar-senha">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="hint" id="ts-aviso">Este é o seu primeiro acesso (ou uma senha temporária foi definida). Defina uma nova senha para continuar.</p>
+      <label>Senha atual</label>
+      <input type="password" id="ts-senha-atual" autocomplete="current-password">
+      <label>Nova senha</label>
+      <input type="password" id="ts-senha-nova" autocomplete="new-password">
+      <label>Confirmar nova senha</label>
+      <input type="password" id="ts-senha-confirmar" autocomplete="new-password">
+      <p class="hint">Mínimo 10 caracteres, com letra maiúscula, minúscula, número e caractere especial.</p>
+      <div class="modal-error hidden" id="ts-erro"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary hidden" id="ts-cancelar" data-close-modal="modal-trocar-senha">Cancelar</button>
+      <button class="btn-primary" id="ts-salvar">Salvar nova senha</button>
+    </div>
+  </div>
+</div>
+
+<div class="shell hidden" id="app-shell">
   <header class="topbar">
     <div class="topbar-inner">
       <div class="brand">
@@ -34,13 +83,18 @@
         <div class="topbar-label">Medição</div>
         <div class="topbar-period" id="periodo-atual">—</div>
       </div>
+      <div class="topbar-user">
+        <span id="topbar-user-nome">—</span>
+        <button class="link-btn" id="btn-trocar-senha">Trocar senha</button>
+        <button class="link-btn" id="btn-logout">Sair</button>
+      </div>
     </div>
     <nav>
       <button class="tab active" data-view="painel">Painel</button>
       <button class="tab" data-view="riscos">Riscos &amp; Problemas</button>
       <button class="tab" data-view="organizacao">Organização</button>
       <button class="tab" data-view="criterios">Critérios</button>
-      <button class="tab" data-view="admin">Admin</button>
+      <button class="tab" data-view="admin" id="tab-admin">Admin</button>
     </nav>
   </header>
 
@@ -152,7 +206,11 @@
             <option value="bu_director">BU Director</option>
             <option value="am">AM (Account Manager)</option>
             <option value="dm">DM (Delivery Manager)</option>
+            <option value="admin">Admin (acesso full)</option>
           </select>
+          <label>Email (login)</label>
+          <input type="email" id="ap-email" placeholder="nome.sobrenome@sysmanager.com.br">
+          <p class="hint" id="ap-senha-hint">Senha inicial: SysManager@2026 — a pessoa deverá trocar no primeiro acesso.</p>
           <label style="display:flex;align-items:center;gap:6px;margin-top:12px">
             <input type="checkbox" id="ap-ativo" checked style="width:auto"> <span style="text-transform:none;font-weight:500">Ativo</span>
           </label>
@@ -164,7 +222,7 @@
         <div class="card">
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Nome</th><th>Papel</th><th>Ativo</th><th></th></tr></thead>
+              <thead><tr><th>Nome</th><th>Email</th><th>Papel</th><th>Ativo</th><th></th></tr></thead>
               <tbody id="admin-pessoas-tbody"></tbody>
             </table>
           </div>
@@ -248,8 +306,7 @@
       <label>Comentário</label>
       <textarea id="ms-comentario" rows="2" placeholder="O que mudou desde a última medição?"></textarea>
 
-      <label>Atualizado por</label>
-      <select id="ms-atualizado-por"></select>
+      <p class="hint" id="ms-atualizado-por-hint">Atualizado por —</p>
 
       <div id="ms-riscos-existentes" class="riscos-existentes hidden">
         <label>Riscos/Problemas já abertos para este pilar</label>

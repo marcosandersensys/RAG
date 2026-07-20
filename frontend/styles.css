@@ -53,6 +53,21 @@ html,body{overflow-x:hidden;width:100%}
 .topbar-label{font-size:10px;font-weight:700;color:var(--text-subtle);letter-spacing:.1em;text-transform:uppercase}
 .topbar-period{font-size:13px;font-weight:600;color:var(--text-muted);margin-top:2px}
 
+.topbar-user{display:flex;align-items:center;gap:12px;font-size:12px;color:var(--text-muted);font-weight:600}
+.link-btn{background:none;border:none;color:var(--sys-blue);cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font-body);padding:4px 2px}
+.link-btn:hover{text-decoration:underline}
+
+/* LOGIN */
+.auth-screen{position:fixed;inset:0;background:var(--bg-page);display:flex;align-items:center;justify-content:center;padding:20px;z-index:200}
+.auth-screen.hidden{display:none}
+.auth-card{background:#fff;border-radius:var(--radius-card);box-shadow:var(--shadow-card);padding:32px 28px;width:100%;max-width:380px}
+.auth-brand{justify-content:center;margin-bottom:24px}
+.auth-title{font-size:18px;margin-bottom:16px;text-align:center}
+.auth-card label{display:block;font-size:11px;font-weight:700;color:var(--text-muted);margin:14px 0 4px;text-transform:uppercase;letter-spacing:.03em}
+.auth-card label:first-of-type{margin-top:0}
+.auth-card input{width:100%;padding:11px 12px;border:1.5px solid var(--border-subtle);border-radius:var(--radius-lg);font-size:13px;font-family:var(--font-body)}
+.auth-submit{width:100%;margin-top:20px;padding:12px}
+
 /* NAV */
 nav{display:flex;gap:0;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
 nav::-webkit-scrollbar{display:none}
