@@ -8,6 +8,7 @@ da Vercel não adiciona o diretório do próprio módulo ao sys.path, então um
 `db.py` irmão dá ModuleNotFoundError em produção.
 """
 import os
+from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import List, Optional
@@ -279,6 +280,48 @@ def _current_status_map(conn, cliente_id: int) -> dict:
     return {r["pilar"]: dict(r) for r in rows}
 
 
+# ---------- Batch helpers (avoid N+1 queries when listing all clients) ----------
+
+def _all_current_status(conn) -> dict:
+    """{cliente_id: {pilar: {status, atualizado_por, atualizado_em, comentario}}} for every client."""
+    rows = conn.execute(
+        """
+        SELECT sh.cliente_id, sh.pilar, sh.status, sh.atualizado_por, sh.atualizado_em, sh.comentario
+        FROM status_history sh
+        JOIN (
+            SELECT cliente_id, pilar, MAX(atualizado_em) AS max_em
+            FROM status_history
+            GROUP BY cliente_id, pilar
+        ) latest
+        ON sh.cliente_id = latest.cliente_id AND sh.pilar = latest.pilar AND sh.atualizado_em = latest.max_em
+        """
+    ).fetchall()
+    result = defaultdict(dict)
+    for r in rows:
+        result[r["cliente_id"]][r["pilar"]] = dict(r)
+    return result
+
+
+def _all_riscos_abertos_counts(conn) -> dict:
+    """{cliente_id: count} of non-closed riscos/issues for every client."""
+    rows = conn.execute(
+        "SELECT cliente_id, COUNT(*) c FROM riscos_issues WHERE status != 'fechado' GROUP BY cliente_id"
+    ).fetchall()
+    return {r["cliente_id"]: r["c"] for r in rows}
+
+
+def _all_dms(conn) -> dict:
+    """{cliente_id: [{"id", "nome"}, ...]} for every client."""
+    rows = conn.execute(
+        """SELECT cd.cliente_id, p.id, p.nome FROM cliente_dms cd
+           JOIN pessoas p ON p.id = cd.dm_id ORDER BY p.nome"""
+    ).fetchall()
+    result = defaultdict(list)
+    for r in rows:
+        result[r["cliente_id"]].append({"id": r["id"], "nome": r["nome"]})
+    return result
+
+
 # ---------- Clientes ----------
 
 @app.get("/api/pilares")
@@ -290,36 +333,43 @@ def listar_pilares():
 def listar_clientes():
     conn = get_conn()
     clientes = conn.execute(
-        "SELECT * FROM clientes WHERE ativo = 1 ORDER BY nome"
+        """
+        SELECT c.id AS cliente_id, c.nome AS cliente_nome, c.industry_code, c.tipo_linha,
+               bd.id AS bud_id, bd.nome AS bud_nome, bd.papel AS bud_papel,
+               amp.id AS amp_id, amp.nome AS amp_nome, amp.papel AS amp_papel
+        FROM clientes c
+        LEFT JOIN pessoas bd ON bd.id = c.bu_director_id
+        LEFT JOIN pessoas amp ON amp.id = c.am_id
+        WHERE c.ativo = 1
+        ORDER BY c.nome
+        """
     ).fetchall()
+
+    status_por_cliente = _all_current_status(conn)
+    riscos_por_cliente = _all_riscos_abertos_counts(conn)
+    dms_por_cliente = _all_dms(conn)
+    conn.close()
 
     resultado = []
     for c in clientes:
-        status_map = _current_status_map(conn, c["id"])
+        status_map = status_por_cliente.get(c["cliente_id"], {})
         modificado = max(
             (v["atualizado_em"] for v in status_map.values()), default=None
         )
-        riscos_abertos = conn.execute(
-            "SELECT COUNT(*) c FROM riscos_issues WHERE cliente_id=? AND status!='fechado'",
-            (c["id"],),
-        ).fetchone()["c"]
-
-        relacoes = _cliente_relacoes(conn, c["id"])
         resultado.append({
-            "id": c["id"],
-            "nome": c["nome"],
+            "id": c["cliente_id"],
+            "nome": c["cliente_nome"],
             "industry_code": c["industry_code"],
             "tipo_linha": c["tipo_linha"],
-            "bu_director": relacoes["bu_director"],
-            "am": relacoes["am"],
-            "dms": relacoes["dms"],
+            "bu_director": {"id": c["bud_id"], "nome": c["bud_nome"], "papel": c["bud_papel"]} if c["bud_id"] else None,
+            "am": {"id": c["amp_id"], "nome": c["amp_nome"], "papel": c["amp_papel"]} if c["amp_id"] else None,
+            "dms": dms_por_cliente.get(c["cliente_id"], []),
             "modificado": modificado,
-            "riscos_abertos": riscos_abertos,
+            "riscos_abertos": riscos_por_cliente.get(c["cliente_id"], 0),
             "pilares": {
                 p: status_map.get(p, {}).get("status", "G") for p in PILARES
             },
         })
-    conn.close()
     return resultado
 
 
@@ -627,11 +677,17 @@ def editar_criterio(criterio_id: int, payload: CriterioUpdate):
 def resumo():
     conn = get_conn()
     clientes = conn.execute("SELECT id FROM clientes WHERE ativo=1").fetchall()
+    status_por_cliente = _all_current_status(conn)
+
+    riscos_abertos = conn.execute(
+        "SELECT COUNT(*) c FROM riscos_issues WHERE status != 'fechado'"
+    ).fetchone()["c"]
+    conn.close()
 
     contagem = {p: {"G": 0, "A": 0, "R": 0} for p in PILARES}
     clientes_criticos = 0
     for c in clientes:
-        status_map = _current_status_map(conn, c["id"])
+        status_map = status_por_cliente.get(c["id"], {})
         tem_r = False
         for p in PILARES:
             s = status_map.get(p, {}).get("status", "G")
@@ -641,11 +697,6 @@ def resumo():
         if tem_r:
             clientes_criticos += 1
 
-    riscos_abertos = conn.execute(
-        "SELECT COUNT(*) c FROM riscos_issues WHERE status != 'fechado'"
-    ).fetchone()["c"]
-
-    conn.close()
     return {
         "total_clientes": len(clientes),
         "clientes_criticos": clientes_criticos,
