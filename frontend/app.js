@@ -155,6 +155,7 @@ function mostrarTrocarSenha(forcada) {
 }
 
 async function entrarNaAplicacao() {
+  document.getElementById("view-login").classList.add("hidden");
   if (session.pessoa.precisa_trocar_senha) {
     mostrarTrocarSenha(true);
     return;
