@@ -517,6 +517,7 @@ def resetar_senha(pessoa_id: int, pessoa: dict = Depends(get_current_pessoa)):
         "UPDATE pessoas SET senha_hash=?, precisa_trocar_senha=1 WHERE id=?",
         (_hash_senha(SENHA_PADRAO), pessoa_id),
     )
+    conn.execute("DELETE FROM sessoes WHERE pessoa_id=?", (pessoa_id,))
     conn.commit()
     conn.close()
     return {"ok": True}
