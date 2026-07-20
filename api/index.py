@@ -109,6 +109,20 @@ CREATE TABLE IF NOT EXISTS sessoes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessoes_expira ON sessoes(expira_em);
+
+CREATE TABLE IF NOT EXISTS auditoria (
+    id SERIAL PRIMARY KEY,
+    entidade TEXT NOT NULL,
+    entidade_id INTEGER,
+    acao TEXT NOT NULL,
+    pessoa_id INTEGER REFERENCES pessoas(id),
+    pessoa_nome TEXT NOT NULL,
+    detalhes TEXT,
+    criado_em TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_auditoria_criado_em ON auditoria(criado_em DESC);
+CREATE INDEX IF NOT EXISTS idx_auditoria_entidade ON auditoria(entidade, entidade_id);
 """
 
 
@@ -442,6 +456,21 @@ def _all_dms(conn) -> dict:
     return result
 
 
+# ---------- Auditoria ----------
+
+def _diff_campos(antigo: dict, novos: dict) -> str:
+    partes = [f"{k}: {antigo.get(k)} → {v}" for k, v in novos.items() if antigo.get(k) != v]
+    return "; ".join(partes) if partes else "sem alterações de campo"
+
+
+def _log_auditoria(conn, pessoa: dict, entidade: str, entidade_id: Optional[int], acao: str, detalhes: str = ""):
+    conn.execute(
+        """INSERT INTO auditoria (entidade, entidade_id, acao, pessoa_id, pessoa_nome, detalhes, criado_em)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (entidade, entidade_id, acao, pessoa["id"], pessoa["nome"], detalhes, now_iso()),
+    )
+
+
 # ---------- Auth ----------
 
 @app.post("/api/auth/login")
@@ -509,6 +538,7 @@ def trocar_senha(payload: TrocarSenhaIn, pessoa: dict = Depends(get_current_pess
         "UPDATE pessoas SET senha_hash=?, precisa_trocar_senha=0 WHERE id=?",
         (novo_hash, pessoa["id"]),
     )
+    _log_auditoria(conn, pessoa, "pessoa", pessoa["id"], "trocar_senha", "Senha alterada pelo próprio usuário")
     conn.commit()
     conn.close()
     return {"ok": True}
@@ -518,7 +548,7 @@ def trocar_senha(payload: TrocarSenhaIn, pessoa: dict = Depends(get_current_pess
 def resetar_senha(pessoa_id: int, pessoa: dict = Depends(get_current_pessoa)):
     _require_admin(pessoa)
     conn = get_conn()
-    alvo = conn.execute("SELECT id FROM pessoas WHERE id=?", (pessoa_id,)).fetchone()
+    alvo = conn.execute("SELECT id, nome FROM pessoas WHERE id=?", (pessoa_id,)).fetchone()
     if not alvo:
         conn.close()
         raise HTTPException(404, "Pessoa não encontrada")
@@ -527,6 +557,7 @@ def resetar_senha(pessoa_id: int, pessoa: dict = Depends(get_current_pessoa)):
         (_hash_senha(SENHA_PADRAO), pessoa_id),
     )
     conn.execute("DELETE FROM sessoes WHERE pessoa_id=?", (pessoa_id,))
+    _log_auditoria(conn, pessoa, "pessoa", pessoa_id, "resetar_senha", f"Senha de '{alvo['nome']}' resetada para o padrão")
     conn.commit()
     conn.close()
     return {"ok": True}
@@ -655,6 +686,8 @@ def criar_cliente(payload: ClienteIn, pessoa: dict = Depends(get_current_pessoa)
                VALUES (?, ?, 'G', ?, 'Cliente criado', ?, ?)""",
             (cliente_id, pilar, semana, pessoa["nome"], ts),
         )
+    _log_auditoria(conn, pessoa, "cliente", cliente_id, "criar",
+                   f"'{payload.nome}' criado (Industry: {payload.industry_code}, Tipo: {payload.tipo_linha})")
     conn.commit()
     conn.close()
     return {"id": cliente_id}
@@ -670,6 +703,7 @@ def editar_cliente(cliente_id: int, payload: ClienteUpdate, pessoa: dict = Depen
         raise HTTPException(404, "Cliente não encontrado")
 
     fields = payload.model_dump(exclude_unset=True, exclude={"dm_ids"})
+    detalhes = _diff_campos(dict(c), fields)
     if fields:
         set_clause = ", ".join(f"{k}=?" for k in fields)
         values = list(fields.values()) + [cliente_id]
@@ -677,7 +711,9 @@ def editar_cliente(cliente_id: int, payload: ClienteUpdate, pessoa: dict = Depen
 
     if payload.dm_ids is not None:
         _set_cliente_dms(conn, cliente_id, payload.dm_ids)
+        detalhes += f"; dm_ids: {payload.dm_ids}"
 
+    _log_auditoria(conn, pessoa, "cliente", cliente_id, "editar", f"'{c['nome']}': {detalhes}")
     conn.commit()
     conn.close()
     return {"ok": True}
@@ -719,6 +755,7 @@ def criar_pessoa(payload: PessoaIn, pessoa: dict = Depends(get_current_pessoa)):
             (payload.nome, payload.papel, email, _hash_senha(SENHA_PADRAO)),
         )
         pessoa_id = cur.fetchone()["id"]
+        _log_auditoria(conn, pessoa, "pessoa", pessoa_id, "criar", f"'{payload.nome}' criado(a) (papel: {payload.papel})")
         conn.commit()
     except psycopg2.IntegrityError:
         conn.rollback()
@@ -742,10 +779,12 @@ def editar_pessoa(pessoa_id: int, payload: PessoaUpdate, pessoa: dict = Depends(
     if "email" in fields and fields["email"]:
         fields["email"] = fields["email"].strip().lower()
     if fields:
+        detalhes = _diff_campos(dict(p), fields)
         set_clause = ", ".join(f"{k}=?" for k in fields)
         values = list(fields.values()) + [pessoa_id]
         try:
             conn.execute(f"UPDATE pessoas SET {set_clause} WHERE id=?", values)
+            _log_auditoria(conn, pessoa, "pessoa", pessoa_id, "editar", f"'{p['nome']}': {detalhes}")
             conn.commit()
         except psycopg2.IntegrityError:
             conn.rollback()
@@ -806,6 +845,10 @@ def registrar_status(payload: StatusIn, pessoa: dict = Depends(get_current_pesso
         (payload.cliente_id, payload.pilar, payload.status, semana,
          payload.comentario, pessoa["nome"], ts),
     )
+    detalhes = f"Pilar {PILAR_LABELS.get(payload.pilar, payload.pilar)} definido como {payload.status}"
+    if payload.comentario:
+        detalhes += f" — {payload.comentario}"
+    _log_auditoria(conn, pessoa, "status", payload.cliente_id, "editar", detalhes)
     conn.commit()
     conn.close()
     return {"ok": True}
@@ -889,6 +932,8 @@ def criar_risco(payload: RiscoIn, pessoa: dict = Depends(get_current_pessoa)):
          payload.status, ts, ts),
     )
     risco_id = cur.fetchone()["id"]
+    _log_auditoria(conn, pessoa, "risco", risco_id, "criar",
+                   f"'{payload.titulo}' (pilar {PILAR_LABELS.get(payload.pilar, payload.pilar)}, severidade {payload.severidade})")
     conn.commit()
     conn.close()
     return {"id": risco_id}
@@ -918,10 +963,13 @@ def editar_risco(risco_id: int, payload: RiscoUpdate, pessoa: dict = Depends(get
             )
         fields["nota_fechamento"] = nota
     if fields:
+        detalhes = _diff_campos(dict(r), fields)
         fields["atualizado_em"] = now_iso()
         set_clause = ", ".join(f"{k}=?" for k in fields)
         values = list(fields.values()) + [risco_id]
         conn.execute(f"UPDATE riscos_issues SET {set_clause} WHERE id=?", values)
+        acao = "fechar" if vira_fechado else "editar"
+        _log_auditoria(conn, pessoa, "risco", risco_id, acao, f"'{r['titulo']}': {detalhes}")
         conn.commit()
     conn.close()
     return {"ok": True}
@@ -947,12 +995,39 @@ def editar_criterio(criterio_id: int, payload: CriterioUpdate, pessoa: dict = De
         raise HTTPException(404, "Critério não encontrado")
     fields = payload.model_dump(exclude_unset=True)
     if fields:
+        detalhes = _diff_campos(dict(c), fields)
         set_clause = ", ".join(f"{k}=?" for k in fields)
         values = list(fields.values()) + [criterio_id]
         conn.execute(f"UPDATE criterios SET {set_clause} WHERE id=?", values)
+        _log_auditoria(conn, pessoa, "criterio", criterio_id, "editar",
+                       f"[{c['pilar']}/{c['linha']}/{c['status']}]: {detalhes}")
         conn.commit()
     conn.close()
     return {"ok": True}
+
+
+# ---------- Auditoria ----------
+
+@app.get("/api/auditoria")
+def listar_auditoria(entidade: Optional[str] = None, busca: Optional[str] = None,
+                      limit: int = 200, pessoa: dict = Depends(get_current_pessoa)):
+    _require_admin(pessoa)
+    limit = min(max(limit, 1), 500)
+    conn = get_conn()
+    query = "SELECT * FROM auditoria WHERE 1=1"
+    params = []
+    if entidade:
+        query += " AND entidade = ?"
+        params.append(entidade)
+    if busca:
+        termo = f"%{busca}%"
+        query += " AND (pessoa_nome ILIKE ? OR detalhes ILIKE ?)"
+        params.extend([termo, termo])
+    query += " ORDER BY criado_em DESC LIMIT ?"
+    params.append(limit)
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 # ---------- Dashboard resumo ----------

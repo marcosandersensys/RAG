@@ -8,6 +8,7 @@ const state = {
   pessoas: [],
   riscos: [],
   criterios: [],
+  auditoria: [],
   orgView: "cliente",
   adminView: "pessoas",
 };
@@ -85,9 +86,13 @@ document.querySelectorAll(".tab").forEach(btn => {
 });
 
 document.querySelector('.tab[data-view="riscos"]').addEventListener("click", loadRiscos);
-document.querySelector('.tab[data-view="criterios"]').addEventListener("click", loadCriterios);
 document.querySelector('.tab[data-view="organizacao"]').addEventListener("click", renderOrgConteudo);
-document.querySelector('.tab[data-view="admin"]').addEventListener("click", () => { loadAdminPessoas(); loadAdminClientesTable(); });
+document.querySelector('.tab[data-view="admin"]').addEventListener("click", () => {
+  loadAdminPessoas();
+  loadAdminClientesTable();
+  loadCriterios();
+  loadAuditoria();
+});
 
 document.querySelectorAll('.org-toggle .subtab').forEach(btn => {
   btn.addEventListener("click", () => {
@@ -905,6 +910,47 @@ function populaFiltroPilarRiscos() {
   sel.innerHTML = `<option value="">Pilar (todos)</option>` +
     PILAR_ORDEM.map(p => `<option value="${p}">${PILAR_LABELS[p]}</option>`).join("");
 }
+
+// ---------- ADMIN: Auditoria ----------
+
+const ENTIDADE_LABELS = { cliente: "Cliente", pessoa: "Pessoa", status: "Status RAG", risco: "Risco/Problema", criterio: "Critério" };
+const ACAO_LABELS = { criar: "Criar", editar: "Editar", fechar: "Encerrar", resetar_senha: "Resetar senha", trocar_senha: "Trocar senha" };
+
+async function loadAuditoria() {
+  const entidade = document.getElementById("aud-filtro-entidade").value;
+  const busca = document.getElementById("aud-filtro-busca").value.trim();
+  const params = new URLSearchParams();
+  if (entidade) params.set("entidade", entidade);
+  if (busca) params.set("busca", busca);
+  try {
+    state.auditoria = await api(`/api/auditoria?${params.toString()}`);
+  } catch (e) {
+    state.auditoria = [];
+  }
+  renderAuditoria();
+}
+
+function renderAuditoria() {
+  const tbody = document.getElementById("auditoria-tbody");
+  if (!state.auditoria || state.auditoria.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" class="empty-state">Nenhum registro encontrado.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = state.auditoria.map(a => `
+    <tr>
+      <td>${fmtDataLonga(a.criado_em)}</td>
+      <td>${esc(a.pessoa_nome)}</td>
+      <td><span class="badge papel-${a.entidade === "pessoa" ? "bu_director" : "am"}">${ENTIDADE_LABELS[a.entidade] || esc(a.entidade)}</span></td>
+      <td>${ACAO_LABELS[a.acao] || esc(a.acao)}</td>
+      <td>${esc(a.detalhes || "—")}</td>
+    </tr>
+  `).join("");
+}
+
+["aud-filtro-entidade", "aud-filtro-busca"].forEach(id => {
+  document.getElementById(id).addEventListener("change", loadAuditoria);
+});
+document.getElementById("aud-filtro-busca").addEventListener("keydown", (e) => { if (e.key === "Enter") loadAuditoria(); });
 
 // ---------- ADMIN: Pessoas ----------
 

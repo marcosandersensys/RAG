@@ -93,7 +93,6 @@
       <button class="tab active" data-view="painel">Painel</button>
       <button class="tab" data-view="riscos">Riscos &amp; Problemas</button>
       <button class="tab" data-view="organizacao">Organização</button>
-      <button class="tab" data-view="criterios">Critérios</button>
       <button class="tab" data-view="admin" id="tab-admin">Admin</button>
     </nav>
   </header>
@@ -176,27 +175,13 @@
       <div id="org-conteudo"></div>
     </section>
 
-    <!-- CRITÉRIOS -->
-    <section id="view-criterios" class="view">
-      <p class="hint">Tabela de critérios macro por pilar. Clique numa descrição para editar — as mudanças são
-        salvas automaticamente. Use isso para evoluir os critérios conforme o time amadurece a definição.</p>
-      <div class="card">
-        <div class="table-wrap">
-          <table id="tabela-criterios">
-            <thead>
-              <tr><th>Pilar</th><th>Linha</th><th class="col-g">G</th><th class="col-a">A</th><th class="col-r">R</th></tr>
-            </thead>
-            <tbody id="criterios-tbody"></tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-
     <!-- ADMIN -->
     <section id="view-admin" class="view">
       <div class="subtabs">
         <button class="subtab active" data-admin-view="pessoas">Pessoas</button>
         <button class="subtab" data-admin-view="clientes">Clientes</button>
+        <button class="subtab" data-admin-view="criterios">Critérios</button>
+        <button class="subtab" data-admin-view="auditoria">Auditoria</button>
       </div>
 
       <div id="admin-pessoas" class="subview active">
@@ -281,6 +266,44 @@
             <table>
               <thead><tr><th>Nome</th><th>Industry</th><th>BU Director</th><th>AM</th><th>DM(s)</th><th>Ativo</th><th></th></tr></thead>
               <tbody id="admin-clientes-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div id="admin-criterios" class="subview">
+        <p class="hint">Tabela de critérios macro por pilar. Clique numa descrição para editar — as mudanças são
+          salvas automaticamente. A referência somente-leitura fica disponível para todos no Painel (botão "?
+          Critérios").</p>
+        <div class="card">
+          <div class="table-wrap">
+            <table id="tabela-criterios">
+              <thead>
+                <tr><th>Pilar</th><th>Linha</th><th class="col-g">G</th><th class="col-a">A</th><th class="col-r">R</th></tr>
+              </thead>
+              <tbody id="criterios-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div id="admin-auditoria" class="subview">
+        <div class="toolbar">
+          <select id="aud-filtro-entidade">
+            <option value="">Entidade (todas)</option>
+            <option value="cliente">Cliente</option>
+            <option value="pessoa">Pessoa</option>
+            <option value="status">Status RAG</option>
+            <option value="risco">Risco/Problema</option>
+            <option value="criterio">Critério</option>
+          </select>
+          <input type="text" id="aud-filtro-busca" placeholder="Buscar por usuário ou detalhe…">
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Data/Hora</th><th>Usuário</th><th>Entidade</th><th>Ação</th><th>Detalhes</th></tr></thead>
+              <tbody id="auditoria-tbody"></tbody>
             </table>
           </div>
         </div>
