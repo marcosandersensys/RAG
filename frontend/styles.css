@@ -117,6 +117,14 @@ th.col-g{color:#6EE7B7}
 th.col-a{color:#FCD34D}
 th.col-r{color:#FCA5A5}
 
+/* Table-header inline help ("?") */
+.th-help{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.12);color:#fff;font-size:9px;font-weight:700;cursor:pointer;vertical-align:middle;margin-left:2px;line-height:1;padding:0}
+.th-help:hover{background:rgba(255,255,255,.28)}
+
+/* Overdue risk/issue row */
+tr.risco-atrasado td{background:rgba(220,38,38,.045)}
+tr.risco-atrasado:hover td{background:rgba(220,38,38,.09)}
+
 /* Industry code pill */
 .pill{display:inline-flex;padding:3px 10px;border-radius:var(--radius-pill);font-size:10px;font-weight:700;background:#F3F4F6;color:var(--text-muted);letter-spacing:.02em}
 
@@ -156,7 +164,20 @@ th.col-r{color:#FCA5A5}
 .btn-danger{background:var(--destructive);color:#fff;border:none}
 .btn-danger:hover{background:#b91c1c}
 
+.help-dot{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:var(--sys-blue);color:#fff;font-size:9px;font-weight:800;margin-right:2px}
+
 .hint{font-size:12px;color:var(--text-muted);margin-bottom:14px}
+
+/* Critérios de referência (modal de ajuda no Painel) */
+.crit-ref-pilar{padding:14px 0;border-bottom:1px solid var(--border-subtle);transition:background .3s}
+.crit-ref-pilar:last-child{border-bottom:none}
+.crit-ref-pilar h4{font-family:var(--font-heading);font-size:14px;font-weight:700;color:var(--sys-blue);margin-bottom:8px}
+.crit-ref-linha{margin-bottom:10px}
+.crit-ref-linha:last-child{margin-bottom:0}
+.crit-ref-linha-nome{font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px}
+.crit-ref-status{display:flex;align-items:flex-start;gap:6px;font-size:12px;color:var(--text-body);padding:2px 0}
+.crit-ref-status .dot{margin-top:4px;flex-shrink:0}
+.crit-ref-highlight{background:rgba(16,89,175,.06);border-radius:var(--radius-lg)}
 
 /* SUB-TABS (Admin, Organizacao) */
 .subtabs{display:flex;gap:8px;margin-bottom:16px}
@@ -197,7 +218,7 @@ th.col-r{color:#FCA5A5}
 
 .modal-error{margin-top:12px;padding:9px 12px;background:rgba(220,38,38,.08);color:var(--destructive);border-radius:var(--radius-lg);font-size:11px;font-weight:500}
 
-.cliente-detalhe-pilares{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px}
+.cliente-detalhe-pilares{display:grid;grid-template-columns:repeat(auto-fit,minmax(72px,1fr));gap:8px;margin-bottom:16px}
 .pilar-mini{text-align:center;padding:10px 6px;background:var(--bg-page);border-radius:var(--radius-lg)}
 .pilar-mini .lbl{font-size:9px;color:var(--text-subtle);text-transform:uppercase;margin-bottom:6px;font-weight:700;letter-spacing:.03em}
 

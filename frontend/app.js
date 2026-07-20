@@ -1,5 +1,5 @@
-const PILAR_ORDEM = ["prazo", "escopo", "rh", "contrato", "faturamento"];
-const PILAR_LABELS = { prazo: "Prazo", escopo: "Escopo", rh: "RH", contrato: "Contrato", faturamento: "Faturamento" };
+const PILAR_ORDEM = ["prazo", "faturamento", "margem", "escopo", "rh", "csat", "contrato"];
+const PILAR_LABELS = { prazo: "Prazo", faturamento: "Faturamento", margem: "Margem", escopo: "Escopo", rh: "RH", csat: "CSAT", contrato: "Contrato" };
 const PAPEL_LABELS = { bu_director: "BU Director", am: "AM", dm: "DM", admin: "Admin" };
 const DIRECTOR_COLORS = ["var(--sys-magenta)", "var(--sys-blue)", "var(--sys-purple)"];
 
@@ -119,6 +119,7 @@ document.querySelectorAll(".modal-overlay").forEach(overlay => {
   overlay.addEventListener("click", (e) => {
     if (e.target !== overlay) return;
     if (overlay.id === "modal-trocar-senha" && overlay.dataset.forcada === "1") return;
+    if (overlay.id === "modal-fechar-risco") reverterSelectFechamento();
     closeModal(overlay.id);
   });
 });
@@ -260,8 +261,55 @@ function renderResumoCards(resumo) {
     <div class="summary-card"><div class="num">${resumo.total_clientes}</div><div class="label">Clientes ativos</div></div>
     <div class="summary-card ${resumo.clientes_criticos > 0 ? "alert" : ""}"><div class="num">${resumo.clientes_criticos}</div><div class="label">Clientes com pilar vermelho</div></div>
     <div class="summary-card ${resumo.riscos_abertos > 0 ? "alert" : ""}"><div class="num">${resumo.riscos_abertos}</div><div class="label">Riscos/Problemas em aberto</div></div>
+    <div class="summary-card ${resumo.riscos_atrasados > 0 ? "alert" : ""}"><div class="num">${resumo.riscos_atrasados}</div><div class="label">Riscos/Problemas atrasados</div></div>
   `;
 }
+
+// ---------- Critérios de referência (help contextual no Painel) ----------
+
+async function abrirCriteriosReferencia(pilarFoco) {
+  const criterios = await api("/api/criterios");
+  const grupos = new Map();
+  criterios.forEach(c => {
+    if (!grupos.has(c.pilar)) grupos.set(c.pilar, new Map());
+    const porLinha = grupos.get(c.pilar);
+    if (!porLinha.has(c.linha)) porLinha.set(c.linha, {});
+    porLinha.get(c.linha)[c.status] = c.descricao;
+  });
+
+  const corpo = document.getElementById("criterios-ref-corpo");
+  corpo.innerHTML = PILAR_ORDEM.map(p => {
+    const porLinha = grupos.get(p);
+    if (!porLinha || !porLinha.size) return "";
+    return `
+      <div class="crit-ref-pilar" id="crit-ref-${p}">
+        <h4>${esc(PILAR_LABELS[p])}</h4>
+        ${[...porLinha.entries()].map(([linha, itens]) => `
+          <div class="crit-ref-linha">
+            <div class="crit-ref-linha-nome">${esc(linha)}</div>
+            <div class="crit-ref-status"><span class="dot dot-g"></span>${esc(itens.G || "—")}</div>
+            <div class="crit-ref-status"><span class="dot dot-a"></span>${esc(itens.A || "—")}</div>
+            <div class="crit-ref-status"><span class="dot dot-r"></span>${esc(itens.R || "—")}</div>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }).join("");
+
+  openModal("modal-criterios-ref");
+
+  if (pilarFoco) {
+    setTimeout(() => {
+      const alvo = document.getElementById(`crit-ref-${pilarFoco}`);
+      if (!alvo) return;
+      alvo.scrollIntoView({ behavior: "smooth", block: "start" });
+      alvo.classList.add("crit-ref-highlight");
+      setTimeout(() => alvo.classList.remove("crit-ref-highlight"), 1600);
+    }, 50);
+  }
+}
+
+document.getElementById("btn-ver-criterios").addEventListener("click", () => abrirCriteriosReferencia());
 
 function populateFiltros(clientes) {
   const buSel = document.getElementById("filtro-bu-director");
@@ -337,7 +385,9 @@ function renderPainelSecoes() {
               <thead>
                 <tr>
                   <th>Cliente</th><th>Industry</th><th>AM</th><th>DM(s)</th><th>Modificado</th>
-                  <th>Prazo</th><th>Escopo</th><th>RH</th><th>Contrato</th><th>Faturamento</th>
+                  ${PILAR_ORDEM.map(p => `
+                    <th>${PILAR_LABELS[p]} <button type="button" class="th-help" data-pilar-help="${p}" title="Ver critérios de ${PILAR_LABELS[p]}">?</button></th>
+                  `).join("")}
                 </tr>
               </thead>
               <tbody>
@@ -366,6 +416,9 @@ function renderPainelSecoes() {
   });
   container.querySelectorAll(".cliente-nome").forEach(el => {
     el.addEventListener("click", () => openClienteModal(Number(el.dataset.clienteId)));
+  });
+  container.querySelectorAll(".th-help").forEach(btn => {
+    btn.addEventListener("click", (e) => { e.stopPropagation(); abrirCriteriosReferencia(btn.dataset.pilarHelp); });
   });
 }
 
@@ -543,18 +596,19 @@ async function loadRiscos() {
 function renderTabelaRiscos() {
   const tbody = document.getElementById("riscos-tbody");
   if (state.riscos.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="9" class="empty-state">Nenhum risco/problema encontrado.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" class="empty-state">Nenhum risco/problema encontrado.</td></tr>`;
     return;
   }
   tbody.innerHTML = state.riscos.map(r => `
-    <tr>
+    <tr class="${r.atrasado ? "risco-atrasado" : ""}">
       <td>${esc(r.cliente_nome)}</td>
       <td>${PILAR_LABELS[r.pilar] || esc(r.pilar)}</td>
       <td><span class="badge tipo-${r.tipo}">${r.tipo}</span></td>
       <td>${esc(r.titulo)}</td>
       <td><span class="badge sev-${r.severidade}">${r.severidade}</span></td>
       <td>${esc(r.responsavel || "—")}</td>
-      <td>${r.data_alvo ? esc(r.data_alvo) : "—"}</td>
+      <td>${r.data_alvo ? esc(r.data_alvo) : "—"} ${r.atrasado ? '<span class="badge st-aberto">Atrasado</span>' : ""}</td>
+      <td>${r.dias_aberto != null ? `${r.dias_aberto}d` : "—"}</td>
       <td>
         <select class="risco-status-select" data-risco-id="${r.id}">
           <option value="aberto" ${r.status === "aberto" ? "selected" : ""}>Aberto</option>
@@ -567,12 +621,19 @@ function renderTabelaRiscos() {
   `).join("");
 
   tbody.querySelectorAll(".risco-status-select").forEach(sel => {
+    let valorAnterior = sel.value;
     sel.addEventListener("change", async () => {
+      if (sel.value === "fechado") {
+        abrirFecharRisco(sel.dataset.riscoId, sel);
+        return;
+      }
       try {
         await api(`/api/riscos/${sel.dataset.riscoId}`, { method: "PUT", body: JSON.stringify({ status: sel.value }) });
+        valorAnterior = sel.value;
         await loadRiscos();
         await loadPainel();
       } catch (e) {
+        sel.value = valorAnterior;
         alert(e.message);
       }
     });
@@ -584,11 +645,59 @@ function renderTabelaRiscos() {
       if (!r) return;
       alert(
         `${r.titulo}\n\nCliente: ${r.cliente_nome}\nPilar: ${PILAR_LABELS[r.pilar]}\nSeveridade: ${r.severidade}\n` +
-        `Responsável: ${r.responsavel || "—"}\n\nDescrição:\n${r.descricao || "—"}\n\nPlano de mitigação:\n${r.plano_mitigacao || "—"}`
+        `Responsável: ${r.responsavel || "—"}\nAberto há: ${r.dias_aberto != null ? r.dias_aberto + " dia(s)" : "—"}\n\n` +
+        `Descrição:\n${r.descricao || "—"}\n\nPlano de mitigação:\n${r.plano_mitigacao || "—"}` +
+        (r.nota_fechamento ? `\n\nNota de encerramento:\n${r.nota_fechamento}` : "")
       );
     });
   });
 }
+
+// ---------- fechamento de risco/problema (nota obrigatória) ----------
+
+let frSelectAtivo = null;
+
+function abrirFecharRisco(riscoId, selectEl) {
+  frSelectAtivo = selectEl;
+  document.getElementById("fr-risco-id").value = riscoId;
+  document.getElementById("fr-nota").value = "";
+  document.getElementById("fr-erro").classList.add("hidden");
+  openModal("modal-fechar-risco");
+}
+
+function reverterSelectFechamento() {
+  if (frSelectAtivo) frSelectAtivo.value = frSelectAtivo.value === "fechado" ? "aberto" : frSelectAtivo.value;
+  frSelectAtivo = null;
+}
+
+document.querySelectorAll('[data-close-modal="modal-fechar-risco"]').forEach(el => {
+  el.addEventListener("click", reverterSelectFechamento);
+});
+
+document.getElementById("fr-salvar").addEventListener("click", async () => {
+  const riscoId = document.getElementById("fr-risco-id").value;
+  const nota = document.getElementById("fr-nota").value.trim();
+  const erroEl = document.getElementById("fr-erro");
+  erroEl.classList.add("hidden");
+  if (!nota) {
+    erroEl.textContent = "Descreva como o risco/problema foi resolvido.";
+    erroEl.classList.remove("hidden");
+    return;
+  }
+  try {
+    await api(`/api/riscos/${riscoId}`, {
+      method: "PUT",
+      body: JSON.stringify({ status: "fechado", nota_fechamento: nota }),
+    });
+    frSelectAtivo = null;
+    closeModal("modal-fechar-risco");
+    await loadRiscos();
+    await loadPainel();
+  } catch (e) {
+    erroEl.textContent = e.message;
+    erroEl.classList.remove("hidden");
+  }
+});
 
 ["risco-filtro-pilar", "risco-filtro-status", "risco-filtro-severidade"].forEach(id => {
   document.getElementById(id).addEventListener("change", loadRiscos);
@@ -993,19 +1102,18 @@ function exportarExcel(linhas, colunas, nomeArquivo, nomeAba) {
 }
 
 document.getElementById("btn-export-painel-excel").addEventListener("click", () => {
-  const linhas = state.clientes.map(c => ({
-    cliente: c.nome,
-    industry: c.industry_code,
-    bu_director: c.bu_director ? c.bu_director.nome : "",
-    am: c.am ? c.am.nome : "",
-    dms: dmsLabel(c.dms),
-    modificado: fmtData(c.modificado),
-    prazo: c.pilares.prazo,
-    escopo: c.pilares.escopo,
-    rh: c.pilares.rh,
-    contrato: c.pilares.contrato,
-    faturamento: c.pilares.faturamento,
-  }));
+  const linhas = state.clientes.map(c => {
+    const linha = {
+      cliente: c.nome,
+      industry: c.industry_code,
+      bu_director: c.bu_director ? c.bu_director.nome : "",
+      am: c.am ? c.am.nome : "",
+      dms: dmsLabel(c.dms),
+      modificado: fmtData(c.modificado),
+    };
+    PILAR_ORDEM.forEach(p => { linha[p] = c.pilares[p]; });
+    return linha;
+  });
   exportarExcel(linhas, [
     { header: "Cliente", key: "cliente", width: 22 },
     { header: "Industry Code", key: "industry", width: 14 },
@@ -1013,11 +1121,7 @@ document.getElementById("btn-export-painel-excel").addEventListener("click", () 
     { header: "AM", key: "am", width: 20 },
     { header: "DM(s)", key: "dms", width: 28 },
     { header: "Modificado", key: "modificado", width: 14 },
-    { header: "Prazo", key: "prazo", width: 10 },
-    { header: "Escopo", key: "escopo", width: 10 },
-    { header: "RH", key: "rh", width: 10 },
-    { header: "Contrato", key: "contrato", width: 10 },
-    { header: "Faturamento", key: "faturamento", width: 12 },
+    ...PILAR_ORDEM.map(p => ({ header: PILAR_LABELS[p], key: p, width: 10 })),
   ], "rag-status-painel.xlsx", "Painel RAG Status");
 });
 
@@ -1030,7 +1134,10 @@ document.getElementById("btn-export-riscos-excel").addEventListener("click", () 
     severidade: r.severidade,
     responsavel: r.responsavel || "",
     data_alvo: r.data_alvo || "",
+    atrasado: r.atrasado ? "Sim" : "Não",
+    dias_aberto: r.dias_aberto != null ? r.dias_aberto : "",
     status: r.status,
+    nota_fechamento: r.nota_fechamento || "",
   }));
   exportarExcel(linhas, [
     { header: "Cliente", key: "cliente", width: 22 },
@@ -1040,7 +1147,10 @@ document.getElementById("btn-export-riscos-excel").addEventListener("click", () 
     { header: "Severidade", key: "severidade", width: 12 },
     { header: "Responsável", key: "responsavel", width: 22 },
     { header: "Data alvo", key: "data_alvo", width: 12 },
+    { header: "Atrasado", key: "atrasado", width: 10 },
+    { header: "Dias em aberto", key: "dias_aberto", width: 14 },
     { header: "Status", key: "status", width: 12 },
+    { header: "Nota de encerramento", key: "nota_fechamento", width: 40 },
   ], "rag-status-riscos.xlsx", "Riscos e Problemas");
 });
 
@@ -1056,7 +1166,7 @@ document.getElementById("btn-export-painel-pdf").addEventListener("click", () =>
     return `
       <div class="print-section-title">${esc(dir.nome)} — BU Director</div>
       <table>
-        <thead><tr><th>Cliente</th><th>Industry</th><th>AM</th><th>DM(s)</th><th>Prazo</th><th>Escopo</th><th>RH</th><th>Contrato</th><th>Faturamento</th></tr></thead>
+        <thead><tr><th>Cliente</th><th>Industry</th><th>AM</th><th>DM(s)</th>${PILAR_ORDEM.map(p => `<th>${PILAR_LABELS[p]}</th>`).join("")}</tr></thead>
         <tbody>
           ${clientesDoDir.map(c => `
             <tr>
@@ -1064,8 +1174,7 @@ document.getElementById("btn-export-painel-pdf").addEventListener("click", () =>
               <td>${esc(c.industry_code)}</td>
               <td>${c.am ? esc(c.am.nome) : "—"}</td>
               <td>${esc(dmsLabel(c.dms))}</td>
-              <td>${c.pilares.prazo}</td><td>${c.pilares.escopo}</td><td>${c.pilares.rh}</td>
-              <td>${c.pilares.contrato}</td><td>${c.pilares.faturamento}</td>
+              ${PILAR_ORDEM.map(p => `<td>${c.pilares[p]}</td>`).join("")}
             </tr>
           `).join("")}
         </tbody>

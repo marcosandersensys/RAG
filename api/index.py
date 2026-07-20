@@ -22,7 +22,7 @@ import psycopg2.extras
 from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
-PILARES = ["prazo", "escopo", "rh", "contrato", "faturamento"]
+PILARES = ["prazo", "faturamento", "margem", "escopo", "rh", "csat", "contrato"]
 PAPEIS = ("bu_director", "am", "dm", "admin")
 
 SENHA_PADRAO = "SysManager@2026"
@@ -86,6 +86,8 @@ CREATE TABLE IF NOT EXISTS riscos_issues (
     criado_em TEXT NOT NULL,
     atualizado_em TEXT NOT NULL
 );
+
+ALTER TABLE riscos_issues ADD COLUMN IF NOT EXISTS nota_fechamento TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_riscos_cliente_pilar
     ON riscos_issues(cliente_id, pilar, status);
@@ -157,12 +159,18 @@ def now_iso() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
+def hoje_str() -> str:
+    return datetime.now().strftime("%Y-%m-%d")
+
+
 PILAR_LABELS = {
     "prazo": "Prazo",
+    "faturamento": "Faturamento",
+    "margem": "Margem",
     "escopo": "Escopo",
     "rh": "RH",
+    "csat": "CSAT",
     "contrato": "Contrato",
-    "faturamento": "Faturamento",
 }
 
 
@@ -308,6 +316,7 @@ class RiscoUpdate(BaseModel):
     plano_mitigacao: Optional[str] = None
     data_alvo: Optional[str] = None
     status: Optional[str] = None
+    nota_fechamento: Optional[str] = None
 
 
 class StatusIn(BaseModel):
@@ -836,11 +845,28 @@ def listar_riscos(pilar: Optional[str] = None, status: Optional[str] = None,
     if cliente_id:
         query += " AND ri.cliente_id = ?"
         params.append(cliente_id)
-    query += " ORDER BY ri.criado_em DESC"
+    query += """
+        ORDER BY
+            (ri.status != 'fechado' AND ri.data_alvo IS NOT NULL AND ri.data_alvo < ?) DESC,
+            ri.criado_em DESC
+    """
+    params.append(hoje_str())
 
     rows = conn.execute(query, params).fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+
+    hoje = hoje_str()
+    resultado = []
+    for r in rows:
+        d = dict(r)
+        d["atrasado"] = bool(d["status"] != "fechado" and d["data_alvo"] and d["data_alvo"] < hoje)
+        if d["criado_em"]:
+            dias = (datetime.now() - datetime.fromisoformat(d["criado_em"])).days
+            d["dias_aberto"] = max(dias, 0)
+        else:
+            d["dias_aberto"] = None
+        resultado.append(d)
+    return resultado
 
 
 @app.post("/api/riscos")
@@ -878,6 +904,19 @@ def editar_risco(risco_id: int, payload: RiscoUpdate, pessoa: dict = Depends(get
     _garantir_acesso_cliente(conn, pessoa, r["cliente_id"])
 
     fields = payload.model_dump(exclude_unset=True)
+    vira_fechado = fields.get("status") == "fechado" and r["status"] != "fechado"
+    if vira_fechado:
+        nota = (fields.get("nota_fechamento") or r["nota_fechamento"] or "").strip()
+        if not nota:
+            conn.close()
+            raise HTTPException(
+                400,
+                detail={
+                    "code": "CLOSURE_NOTE_REQUIRED",
+                    "message": "Informe uma nota de encerramento explicando a resolução antes de fechar.",
+                },
+            )
+        fields["nota_fechamento"] = nota
     if fields:
         fields["atualizado_em"] = now_iso()
         set_clause = ", ".join(f"{k}=?" for k in fields)
@@ -928,6 +967,7 @@ def resumo(pessoa: dict = Depends(get_current_pessoa)):
             "total_clientes": 0,
             "clientes_criticos": 0,
             "riscos_abertos": 0,
+            "riscos_atrasados": 0,
             "contagem_por_pilar": {p: {"G": 0, "A": 0, "R": 0} for p in PILARES},
         }
 
@@ -945,6 +985,16 @@ def resumo(pessoa: dict = Depends(get_current_pessoa)):
         riscos_query += " AND cliente_id = ANY(?)"
         riscos_params.append(list(ids))
     riscos_abertos = conn.execute(riscos_query, riscos_params).fetchone()["c"]
+
+    atrasados_query = (
+        "SELECT COUNT(*) c FROM riscos_issues WHERE status != 'fechado' "
+        "AND data_alvo IS NOT NULL AND data_alvo < ?"
+    )
+    atrasados_params = [hoje_str()]
+    if ids is not None:
+        atrasados_query += " AND cliente_id = ANY(?)"
+        atrasados_params.append(list(ids))
+    riscos_atrasados = conn.execute(atrasados_query, atrasados_params).fetchone()["c"]
     conn.close()
 
     contagem = {p: {"G": 0, "A": 0, "R": 0} for p in PILARES}
@@ -964,5 +1014,6 @@ def resumo(pessoa: dict = Depends(get_current_pessoa)):
         "total_clientes": len(clientes),
         "clientes_criticos": clientes_criticos,
         "riscos_abertos": riscos_abertos,
+        "riscos_atrasados": riscos_atrasados,
         "contagem_por_pilar": contagem,
     }

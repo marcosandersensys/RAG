@@ -111,6 +111,9 @@
           <option value="">Todos os status</option>
           <option value="nao-verde">Apenas com pilar não-verde</option>
         </select>
+        <button class="btn-secondary" id="btn-ver-criterios" title="Ver critérios de classificação G/A/R">
+          <span class="help-dot">?</span> Critérios
+        </button>
         <button class="btn-secondary" id="btn-export-painel-excel">Exportar Excel</button>
         <button class="btn-secondary" id="btn-export-painel-pdf">Exportar PDF</button>
       </div>
@@ -152,6 +155,7 @@
                 <th>Severidade</th>
                 <th>Responsável</th>
                 <th>Data alvo</th>
+                <th>Aberto há</th>
                 <th>Status</th>
                 <th></th>
               </tr>
@@ -420,6 +424,41 @@
     <div class="modal-footer">
       <button class="btn-secondary" data-close-modal="modal-novo-risco">Cancelar</button>
       <button class="btn-primary" id="nr-salvar">Criar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: critérios de referência (help contextual no Painel) -->
+<div class="modal-overlay" id="modal-criterios-ref">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <h3>Critérios de Referência (G/A/R)</h3>
+      <button class="modal-close" data-close-modal="modal-criterios-ref">&times;</button>
+    </div>
+    <div class="modal-body" id="criterios-ref-corpo"></div>
+    <div class="modal-footer">
+      <button class="btn-secondary" data-close-modal="modal-criterios-ref">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: nota de encerramento (obrigatória ao fechar um risco/problema) -->
+<div class="modal-overlay" id="modal-fechar-risco">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Encerrar Risco/Problema</h3>
+      <button class="modal-close" data-close-modal="modal-fechar-risco">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="fr-risco-id">
+      <p class="hint">Descreva como o risco/problema foi resolvido antes de encerrar — fica registrado no histórico.</p>
+      <label>Nota de encerramento</label>
+      <textarea id="fr-nota" rows="3" placeholder="Ex: PO emitida e pagamento confirmado em 15/07."></textarea>
+      <div class="modal-error hidden" id="fr-erro"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" data-close-modal="modal-fechar-risco">Cancelar</button>
+      <button class="btn-primary" id="fr-salvar">Encerrar</button>
     </div>
   </div>
 </div>
