@@ -323,6 +323,7 @@ class RiscoIn(BaseModel):
 
 
 class RiscoUpdate(BaseModel):
+    tipo: Optional[str] = None
     titulo: Optional[str] = None
     descricao: Optional[str] = None
     severidade: Optional[str] = None
@@ -637,7 +638,7 @@ def detalhe_cliente(cliente_id: int, pessoa: dict = Depends(get_current_pessoa))
     historico = conn.execute(
         """SELECT pilar, status, semana, comentario, atualizado_por, atualizado_em
            FROM status_history WHERE cliente_id=?
-           ORDER BY atualizado_em DESC LIMIT 100""",
+           ORDER BY atualizado_em DESC LIMIT 500""",
         (cliente_id,),
     ).fetchall()
 

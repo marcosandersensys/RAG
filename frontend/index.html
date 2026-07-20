@@ -390,6 +390,9 @@
     </div>
     <div class="modal-body">
       <div class="cliente-detalhe-pilares" id="mc-pilares"></div>
+      <h4>Linha do tempo por pilar</h4>
+      <div id="mc-timeline" class="pilar-timeline"></div>
+      <div class="pilar-tl-detalhe" id="mc-timeline-detalhe"></div>
       <h4>Equipe</h4>
       <div id="mc-equipe" class="historico-lista"></div>
       <h4>Histórico recente</h4>
@@ -399,6 +402,68 @@
     </div>
     <div class="modal-footer">
       <button class="btn-secondary" data-close-modal="modal-cliente">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: editar risco/problema -->
+<div class="modal-overlay" id="modal-editar-risco">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <h3 id="er-titulo-header">Risco/Problema</h3>
+      <button class="modal-close" data-close-modal="modal-editar-risco">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="er-id">
+      <div class="er-meta">
+        <span class="badge st-aberto" id="er-status-badge">Aberto</span>
+        <span id="er-cliente-pilar" class="er-meta-texto"></span>
+        <span id="er-aberto-info" class="er-meta-texto meta"></span>
+      </div>
+      <div class="grid-2">
+        <div>
+          <label>Tipo</label>
+          <select id="er-tipo">
+            <option value="risco">Risco</option>
+            <option value="problema">Problema</option>
+          </select>
+        </div>
+        <div>
+          <label>Severidade</label>
+          <select id="er-severidade">
+            <option value="baixa">Baixa</option>
+            <option value="media">Média</option>
+            <option value="alta">Alta</option>
+            <option value="critica">Crítica</option>
+          </select>
+        </div>
+      </div>
+      <label>Título</label>
+      <input type="text" id="er-titulo">
+      <label>Descrição</label>
+      <textarea id="er-descricao" rows="3"></textarea>
+      <div class="grid-2">
+        <div>
+          <label>Responsável pela mitigação</label>
+          <input type="text" id="er-responsavel">
+        </div>
+        <div>
+          <label>Data alvo</label>
+          <input type="date" id="er-data-alvo">
+        </div>
+      </div>
+      <label>Plano de mitigação</label>
+      <textarea id="er-plano" rows="3"></textarea>
+      <div id="er-nota-fechamento-wrap" class="riscos-existentes hidden">
+        <label>Nota de encerramento</label>
+        <p id="er-nota-fechamento"></p>
+      </div>
+      <p class="hint">O status é alterado pela lista de Riscos &amp; Problemas (exige nota de encerramento ao fechar).</p>
+      <div class="modal-error hidden" id="er-erro"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" data-close-modal="modal-editar-risco">Cancelar</button>
+      <button class="btn-primary" id="er-salvar">Salvar alterações</button>
     </div>
   </div>
 </div>

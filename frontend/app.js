@@ -544,6 +544,62 @@ document.getElementById("ms-salvar").addEventListener("click", async () => {
 
 // ---------- modal: detalhe do cliente ----------
 
+function renderClienteTimeline(historico) {
+  const porPilar = new Map();
+  PILAR_ORDEM.forEach(p => porPilar.set(p, []));
+  historico.forEach(h => { if (porPilar.has(h.pilar)) porPilar.get(h.pilar).push(h); });
+  // historico chega em ordem DESC (mais recente primeiro); inverte p/ ordem cronológica
+  porPilar.forEach(arr => arr.reverse());
+
+  const pontos = [];
+  const linhas = PILAR_ORDEM.map(p => {
+    const entradas = porPilar.get(p);
+    if (!entradas.length) {
+      return `
+        <div class="pilar-tl-row">
+          <div class="pilar-tl-label">${PILAR_LABELS[p]}</div>
+          <div class="pilar-tl-track"><span class="pilar-tl-empty">Sem histórico</span></div>
+        </div>
+      `;
+    }
+    const itens = entradas.map((h, i) => {
+      const idx = pontos.length;
+      pontos.push(h);
+      const ultimo = i === entradas.length - 1;
+      return `
+        <div class="pilar-tl-item">
+          <button type="button" class="pilar-tl-dot ${h.status.toLowerCase()} ${ultimo ? "atual" : ""}" data-dot-idx="${idx}"></button>
+          <div class="pilar-tl-date">${fmtData(h.atualizado_em)}</div>
+        </div>
+        ${!ultimo ? '<div class="pilar-tl-line"></div>' : ""}
+      `;
+    }).join("");
+    return `
+      <div class="pilar-tl-row">
+        <div class="pilar-tl-label">${PILAR_LABELS[p]}</div>
+        <div class="pilar-tl-track">${itens}</div>
+      </div>
+    `;
+  }).join("");
+
+  document.getElementById("mc-timeline").innerHTML = linhas;
+  const detalheEl = document.getElementById("mc-timeline-detalhe");
+  detalheEl.textContent = "Clique em um ponto da linha do tempo para ver os detalhes daquela medição.";
+
+  document.querySelectorAll("#mc-timeline .pilar-tl-dot").forEach(dot => {
+    dot.addEventListener("click", () => {
+      document.querySelectorAll("#mc-timeline .pilar-tl-dot").forEach(d => d.classList.remove("selecionado"));
+      dot.classList.add("selecionado");
+      const h = pontos[Number(dot.dataset.dotIdx)];
+      detalheEl.innerHTML = `
+        <span class="badge-rag ${h.status.toLowerCase()}" style="width:20px;height:20px;font-size:10px;cursor:default">${h.status}</span>
+        <strong>${PILAR_LABELS[h.pilar]}</strong> — ${fmtDataLonga(h.atualizado_em)} · ${esc(h.atualizado_por)}<br>
+        ${esc(h.comentario || "Sem comentário registrado.")}
+      `;
+    });
+  });
+}
+
 async function openClienteModal(clienteId) {
   const detalhe = await api(`/api/clientes/${clienteId}`);
   document.getElementById("mc-titulo").textContent = `${detalhe.nome} · ${detalhe.industry_code}`;
@@ -554,6 +610,8 @@ async function openClienteModal(clienteId) {
       <span class="badge-rag ${detalhe.pilares[p].toLowerCase()}">${detalhe.pilares[p]}</span>
     </div>
   `).join("");
+
+  renderClienteTimeline(detalhe.historico);
 
   document.getElementById("mc-equipe").innerHTML = `
     <div class="historico-item"><span><strong>BU Director</strong></span><span class="meta">${detalhe.bu_director ? esc(detalhe.bu_director.nome) : "—"}</span></div>
@@ -571,12 +629,22 @@ async function openClienteModal(clienteId) {
   `).join("") : `<div class="empty-state">Sem histórico ainda.</div>`;
 
   document.getElementById("mc-riscos").innerHTML = detalhe.riscos.length ? detalhe.riscos.map(r => `
-    <div class="historico-item">
+    <div class="historico-item historico-item-clicavel" data-mc-risco-id="${r.id}">
       <span><span class="badge tipo-${r.tipo}">${r.tipo}</span> ${PILAR_LABELS[r.pilar]} — <strong>${esc(r.titulo)}</strong>
       <span class="badge st-${r.status}">${r.status}</span></span>
       <span class="meta">${esc(r.responsavel || "—")}</span>
     </div>
   `).join("") : `<div class="empty-state">Nenhum risco/problema vinculado.</div>`;
+
+  document.querySelectorAll("#mc-riscos [data-mc-risco-id]").forEach(el => {
+    el.addEventListener("click", async () => {
+      const riscoId = Number(el.dataset.mcRiscoId);
+      if (!state.riscos.some(x => x.id === riscoId)) {
+        state.riscos = await api("/api/riscos");
+      }
+      abrirEditarRisco(riscoId);
+    });
+  });
 
   openModal("modal-cliente");
 }
@@ -621,7 +689,7 @@ function renderTabelaRiscos() {
           <option value="fechado" ${r.status === "fechado" ? "selected" : ""}>Fechado</option>
         </select>
       </td>
-      <td><button class="btn-small" data-detalhe-risco="${r.id}">Ver</button></td>
+      <td><button class="btn-small" data-detalhe-risco="${r.id}">Ver / Editar</button></td>
     </tr>
   `).join("");
 
@@ -645,18 +713,81 @@ function renderTabelaRiscos() {
   });
 
   tbody.querySelectorAll("[data-detalhe-risco]").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const r = state.riscos.find(x => x.id === Number(btn.dataset.detalheRisco));
-      if (!r) return;
-      alert(
-        `${r.titulo}\n\nCliente: ${r.cliente_nome}\nPilar: ${PILAR_LABELS[r.pilar]}\nSeveridade: ${r.severidade}\n` +
-        `Responsável: ${r.responsavel || "—"}\nAberto há: ${r.dias_aberto != null ? r.dias_aberto + " dia(s)" : "—"}\n\n` +
-        `Descrição:\n${r.descricao || "—"}\n\nPlano de mitigação:\n${r.plano_mitigacao || "—"}` +
-        (r.nota_fechamento ? `\n\nNota de encerramento:\n${r.nota_fechamento}` : "")
-      );
-    });
+    btn.addEventListener("click", () => abrirEditarRisco(Number(btn.dataset.detalheRisco)));
   });
 }
+
+// ---------- modal: editar risco/problema ----------
+
+const STATUS_RISCO_LABELS = { aberto: "Aberto", mitigando: "Mitigando", fechado: "Fechado" };
+
+function abrirEditarRisco(riscoId) {
+  const r = state.riscos.find(x => x.id === riscoId);
+  if (!r) return;
+
+  document.getElementById("er-id").value = r.id;
+  document.getElementById("er-titulo-header").textContent = r.titulo;
+  document.getElementById("er-cliente-pilar").textContent = `${r.cliente_nome} · ${PILAR_LABELS[r.pilar] || r.pilar}`;
+
+  const badge = document.getElementById("er-status-badge");
+  badge.className = `badge st-${r.status}`;
+  badge.textContent = STATUS_RISCO_LABELS[r.status] || r.status;
+
+  const abertoInfo = document.getElementById("er-aberto-info");
+  const partesInfo = [];
+  if (r.dias_aberto != null) partesInfo.push(`Aberto há ${r.dias_aberto} dia(s)`);
+  if (r.atrasado) partesInfo.push("ATRASADO");
+  abertoInfo.textContent = partesInfo.join(" · ");
+
+  document.getElementById("er-tipo").value = r.tipo;
+  document.getElementById("er-titulo").value = r.titulo;
+  document.getElementById("er-descricao").value = r.descricao || "";
+  document.getElementById("er-severidade").value = r.severidade;
+  document.getElementById("er-data-alvo").value = r.data_alvo || "";
+  document.getElementById("er-responsavel").value = r.responsavel || "";
+  document.getElementById("er-plano").value = r.plano_mitigacao || "";
+
+  const notaWrap = document.getElementById("er-nota-fechamento-wrap");
+  if (r.nota_fechamento) {
+    notaWrap.classList.remove("hidden");
+    document.getElementById("er-nota-fechamento").textContent = r.nota_fechamento;
+  } else {
+    notaWrap.classList.add("hidden");
+  }
+
+  document.getElementById("er-erro").classList.add("hidden");
+  openModal("modal-editar-risco");
+}
+
+document.getElementById("er-salvar").addEventListener("click", async () => {
+  const id = document.getElementById("er-id").value;
+  const titulo = document.getElementById("er-titulo").value.trim();
+  const erroEl = document.getElementById("er-erro");
+  erroEl.classList.add("hidden");
+  if (!titulo) {
+    erroEl.textContent = "Informe um título.";
+    erroEl.classList.remove("hidden");
+    return;
+  }
+  const payload = {
+    tipo: document.getElementById("er-tipo").value,
+    titulo,
+    descricao: document.getElementById("er-descricao").value.trim(),
+    severidade: document.getElementById("er-severidade").value,
+    responsavel: document.getElementById("er-responsavel").value.trim(),
+    plano_mitigacao: document.getElementById("er-plano").value.trim(),
+    data_alvo: document.getElementById("er-data-alvo").value || null,
+  };
+  try {
+    await api(`/api/riscos/${id}`, { method: "PUT", body: JSON.stringify(payload) });
+    closeModal("modal-editar-risco");
+    await loadRiscos();
+    await loadPainel();
+  } catch (e) {
+    erroEl.textContent = e.message;
+    erroEl.classList.remove("hidden");
+  }
+});
 
 // ---------- fechamento de risco/problema (nota obrigatória) ----------
 
