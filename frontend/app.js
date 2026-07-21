@@ -653,12 +653,10 @@ async function openClienteModal(clienteId) {
 
 async function loadRiscos() {
   const pilar = document.getElementById("risco-filtro-pilar").value;
-  const status = document.getElementById("risco-filtro-status").value;
   const severidade = document.getElementById("risco-filtro-severidade").value;
 
   const params = new URLSearchParams();
   if (pilar) params.set("pilar", pilar);
-  if (status) params.set("status", status);
   if (severidade) params.set("severidade", severidade);
 
   const riscos = await api(`/api/riscos?${params.toString()}`);
@@ -666,13 +664,28 @@ async function loadRiscos() {
   renderTabelaRiscos();
 }
 
+function diasEntre(inicioIso, fimIso) {
+  return Math.max(Math.round((new Date(fimIso) - new Date(inicioIso)) / 86400000), 0);
+}
+
 function renderTabelaRiscos() {
-  const tbody = document.getElementById("riscos-tbody");
-  if (state.riscos.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="10" class="empty-state">Nenhum risco/problema encontrado.</td></tr>`;
+  const abertos = state.riscos.filter(r => r.status !== "fechado");
+  const encerrados = state.riscos.filter(r => r.status === "fechado");
+
+  document.getElementById("riscos-subtab-abertos").textContent = `Em Aberto (${abertos.length})`;
+  document.getElementById("riscos-subtab-encerrados").textContent = `Encerrados (${encerrados.length})`;
+
+  renderRiscosAbertos(abertos);
+  renderRiscosEncerrados(encerrados);
+}
+
+function renderRiscosAbertos(abertos) {
+  const tbody = document.getElementById("riscos-abertos-tbody");
+  if (abertos.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="10" class="empty-state">Nenhum risco/problema em aberto.</td></tr>`;
     return;
   }
-  tbody.innerHTML = state.riscos.map(r => `
+  tbody.innerHTML = abertos.map(r => `
     <tr class="${r.atrasado ? "risco-atrasado" : ""}">
       <td>${esc(r.cliente_nome)}</td>
       <td>${PILAR_LABELS[r.pilar] || esc(r.pilar)}</td>
@@ -686,7 +699,7 @@ function renderTabelaRiscos() {
         <select class="risco-status-select" data-risco-id="${r.id}">
           <option value="aberto" ${r.status === "aberto" ? "selected" : ""}>Aberto</option>
           <option value="mitigando" ${r.status === "mitigando" ? "selected" : ""}>Mitigando</option>
-          <option value="fechado" ${r.status === "fechado" ? "selected" : ""}>Fechado</option>
+          <option value="fechado">Fechado</option>
         </select>
       </td>
       <td><button class="btn-small" data-detalhe-risco="${r.id}">Ver / Editar</button></td>
@@ -716,6 +729,59 @@ function renderTabelaRiscos() {
     btn.addEventListener("click", () => abrirEditarRisco(Number(btn.dataset.detalheRisco)));
   });
 }
+
+function renderRiscosEncerrados(encerrados) {
+  const tbody = document.getElementById("riscos-encerrados-tbody");
+  if (encerrados.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="10" class="empty-state">Nenhum risco/problema encerrado.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = encerrados.map(r => `
+    <tr>
+      <td>${esc(r.cliente_nome)}</td>
+      <td>${PILAR_LABELS[r.pilar] || esc(r.pilar)}</td>
+      <td><span class="badge tipo-${r.tipo}">${r.tipo}</span></td>
+      <td>${esc(r.titulo)}</td>
+      <td><span class="badge sev-${r.severidade}">${r.severidade}</span></td>
+      <td>${esc(r.responsavel || "—")}</td>
+      <td>${fmtData(r.atualizado_em)}</td>
+      <td>${diasEntre(r.criado_em, r.atualizado_em)}d</td>
+      <td class="risco-nota-encerramento">${esc(r.nota_fechamento || "—")}</td>
+      <td>
+        <button class="btn-small" data-detalhe-risco="${r.id}">Ver / Editar</button>
+        <button class="btn-small" data-reabrir-risco="${r.id}">Reabrir</button>
+      </td>
+    </tr>
+  `).join("");
+
+  tbody.querySelectorAll("[data-detalhe-risco]").forEach(btn => {
+    btn.addEventListener("click", () => abrirEditarRisco(Number(btn.dataset.detalheRisco)));
+  });
+
+  tbody.querySelectorAll("[data-reabrir-risco]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const r = state.riscos.find(x => x.id === Number(btn.dataset.reabrirRisco));
+      if (!r) return;
+      if (!confirm(`Reabrir "${r.titulo}"? O status voltará para Aberto.`)) return;
+      try {
+        await api(`/api/riscos/${r.id}`, { method: "PUT", body: JSON.stringify({ status: "aberto" }) });
+        await loadRiscos();
+        await loadPainel();
+      } catch (e) {
+        alert("Não foi possível reabrir: " + e.message);
+      }
+    });
+  });
+}
+
+document.querySelectorAll('#view-riscos .subtabs .subtab').forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll('#view-riscos .subtabs .subtab').forEach(b => b.classList.remove("active"));
+    document.querySelectorAll('#view-riscos .subview').forEach(v => v.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById(`riscos-${btn.dataset.riscosView}`).classList.add("active");
+  });
+});
 
 // ---------- modal: editar risco/problema ----------
 
@@ -835,7 +901,7 @@ document.getElementById("fr-salvar").addEventListener("click", async () => {
   }
 });
 
-["risco-filtro-pilar", "risco-filtro-status", "risco-filtro-severidade"].forEach(id => {
+["risco-filtro-pilar", "risco-filtro-severidade"].forEach(id => {
   document.getElementById(id).addEventListener("change", loadRiscos);
 });
 

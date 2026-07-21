@@ -122,14 +122,13 @@
 
     <!-- RISCOS & PROBLEMAS -->
     <section id="view-riscos" class="view">
+      <div class="subtabs">
+        <button class="subtab active" data-riscos-view="abertos" id="riscos-subtab-abertos">Em Aberto</button>
+        <button class="subtab" data-riscos-view="encerrados" id="riscos-subtab-encerrados">Encerrados</button>
+      </div>
+
       <div class="toolbar">
         <select id="risco-filtro-pilar"><option value="">Pilar (todos)</option></select>
-        <select id="risco-filtro-status">
-          <option value="">Status (todos)</option>
-          <option value="aberto">Aberto</option>
-          <option value="mitigando">Mitigando</option>
-          <option value="fechado">Fechado</option>
-        </select>
         <select id="risco-filtro-severidade">
           <option value="">Severidade (todas)</option>
           <option value="baixa">Baixa</option>
@@ -142,25 +141,51 @@
         <button class="btn-primary" id="btn-novo-risco">+ Novo Risco/Problema</button>
       </div>
 
-      <div class="card">
-        <div class="table-wrap">
-          <table id="tabela-riscos">
-            <thead>
-              <tr>
-                <th>Cliente</th>
-                <th>Pilar</th>
-                <th>Tipo</th>
-                <th>Título</th>
-                <th>Severidade</th>
-                <th>Responsável</th>
-                <th>Data alvo</th>
-                <th>Aberto há</th>
-                <th>Status</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody id="riscos-tbody"></tbody>
-          </table>
+      <div id="riscos-abertos" class="subview active">
+        <div class="card">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  <th>Pilar</th>
+                  <th>Tipo</th>
+                  <th>Título</th>
+                  <th>Severidade</th>
+                  <th>Responsável</th>
+                  <th>Data alvo</th>
+                  <th>Aberto há</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="riscos-abertos-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div id="riscos-encerrados" class="subview">
+        <div class="card">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  <th>Pilar</th>
+                  <th>Tipo</th>
+                  <th>Título</th>
+                  <th>Severidade</th>
+                  <th>Responsável</th>
+                  <th>Encerrado em</th>
+                  <th>Duração</th>
+                  <th>Nota de encerramento</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="riscos-encerrados-tbody"></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>
