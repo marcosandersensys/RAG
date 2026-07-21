@@ -228,6 +228,9 @@
           <label style="display:flex;align-items:center;gap:6px;margin-top:12px">
             <input type="checkbox" id="ap-ativo" checked style="width:auto"> <span style="text-transform:none;font-weight:500">Ativo</span>
           </label>
+          <label style="display:flex;align-items:center;gap:6px;margin-top:8px">
+            <input type="checkbox" id="ap-acesso-full" style="width:auto"> <span style="text-transform:none;font-weight:500">Acesso full ao Admin (além do papel operacional)</span>
+          </label>
           <div class="admin-form-actions">
             <button class="btn-primary" id="ap-salvar">Salvar</button>
             <button class="btn-secondary" id="ap-cancelar">Limpar</button>
@@ -236,7 +239,7 @@
         <div class="card">
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Nome</th><th>Email</th><th>Papel</th><th>Ativo</th><th></th></tr></thead>
+              <thead><tr><th>Nome</th><th>Email</th><th>Papel</th><th>Ativo</th><th>Acesso full</th><th></th></tr></thead>
               <tbody id="admin-pessoas-tbody"></tbody>
             </table>
           </div>

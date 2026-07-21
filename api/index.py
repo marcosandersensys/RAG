@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS pessoas (
 ALTER TABLE pessoas ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE pessoas ADD COLUMN IF NOT EXISTS senha_hash TEXT;
 ALTER TABLE pessoas ADD COLUMN IF NOT EXISTS precisa_trocar_senha INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE pessoas ADD COLUMN IF NOT EXISTS acesso_full INTEGER NOT NULL DEFAULT 0;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_pessoas_email ON pessoas(email);
 
 CREATE TABLE IF NOT EXISTS clientes (
@@ -227,7 +228,7 @@ def get_current_pessoa(authorization: Optional[str] = Header(None)) -> dict:
     token = authorization[len("Bearer "):].strip()
     conn = get_conn()
     row = conn.execute(
-        """SELECT p.id, p.nome, p.papel, p.email, p.precisa_trocar_senha, p.ativo
+        """SELECT p.id, p.nome, p.papel, p.email, p.precisa_trocar_senha, p.ativo, p.acesso_full
            FROM sessoes s JOIN pessoas p ON p.id = s.pessoa_id
            WHERE s.token=? AND s.expira_em > ?""",
         (token, now_iso()),
@@ -238,14 +239,18 @@ def get_current_pessoa(authorization: Optional[str] = Header(None)) -> dict:
     return dict(row)
 
 
+def _tem_acesso_full(pessoa: dict) -> bool:
+    return pessoa["papel"] == "admin" or bool(pessoa.get("acesso_full"))
+
+
 def _require_admin(pessoa: dict):
-    if pessoa["papel"] != "admin":
+    if not _tem_acesso_full(pessoa):
         raise HTTPException(403, "Acesso restrito ao administrador")
 
 
 def _clientes_visiveis_ids(conn, pessoa: dict):
-    """None => acesso total (admin). Caso contrário, set de cliente_id permitidos."""
-    if pessoa["papel"] == "admin":
+    """None => acesso total (admin ou acesso_full). Caso contrário, set de cliente_id permitidos."""
+    if _tem_acesso_full(pessoa):
         return None
     ids = set()
     if pessoa["papel"] == "bu_director":
@@ -300,6 +305,7 @@ class PessoaIn(BaseModel):
     nome: str
     papel: str
     email: Optional[str] = None
+    acesso_full: bool = False
 
 
 class PessoaUpdate(BaseModel):
@@ -307,6 +313,7 @@ class PessoaUpdate(BaseModel):
     papel: Optional[str] = None
     ativo: Optional[bool] = None
     email: Optional[str] = None
+    acesso_full: Optional[bool] = None
 
 
 class RiscoIn(BaseModel):
@@ -498,6 +505,7 @@ def login(payload: LoginIn):
             "nome": row["nome"],
             "papel": row["papel"],
             "precisa_trocar_senha": bool(row["precisa_trocar_senha"]),
+            "acesso_full": bool(row["acesso_full"]),
         },
     }
 
@@ -509,6 +517,7 @@ def auth_me(pessoa: dict = Depends(get_current_pessoa)):
         "nome": pessoa["nome"],
         "papel": pessoa["papel"],
         "precisa_trocar_senha": bool(pessoa["precisa_trocar_senha"]),
+        "acesso_full": bool(pessoa.get("acesso_full")),
     }
 
 
@@ -727,8 +736,8 @@ def listar_pessoas(papel: Optional[str] = None, ativo: Optional[bool] = None,
                     pessoa: dict = Depends(get_current_pessoa)):
     conn = get_conn()
     campos = "id, nome, papel, ativo"
-    if pessoa["papel"] == "admin":
-        campos += ", email, precisa_trocar_senha"
+    if _tem_acesso_full(pessoa):
+        campos += ", email, precisa_trocar_senha, acesso_full"
     query = f"SELECT {campos} FROM pessoas WHERE 1=1"
     params = []
     if papel:
@@ -751,9 +760,9 @@ def criar_pessoa(payload: PessoaIn, pessoa: dict = Depends(get_current_pessoa)):
     email = payload.email.strip().lower() if payload.email else None
     try:
         cur = conn.execute(
-            """INSERT INTO pessoas (nome, papel, email, senha_hash, precisa_trocar_senha)
-               VALUES (?, ?, ?, ?, 1) RETURNING id""",
-            (payload.nome, payload.papel, email, _hash_senha(SENHA_PADRAO)),
+            """INSERT INTO pessoas (nome, papel, email, senha_hash, precisa_trocar_senha, acesso_full)
+               VALUES (?, ?, ?, ?, 1, ?) RETURNING id""",
+            (payload.nome, payload.papel, email, _hash_senha(SENHA_PADRAO), payload.acesso_full),
         )
         pessoa_id = cur.fetchone()["id"]
         _log_auditoria(conn, pessoa, "pessoa", pessoa_id, "criar", f"'{payload.nome}' criado(a) (papel: {payload.papel})")

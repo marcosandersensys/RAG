@@ -156,7 +156,8 @@ function mostrarApp() {
   document.getElementById("view-login").classList.add("hidden");
   document.getElementById("app-shell").classList.remove("hidden");
   document.getElementById("topbar-user-nome").textContent = session.pessoa.nome;
-  document.getElementById("tab-admin").classList.toggle("hidden", session.pessoa.papel !== "admin");
+  const temAcessoFull = session.pessoa.papel === "admin" || session.pessoa.acesso_full;
+  document.getElementById("tab-admin").classList.toggle("hidden", !temAcessoFull);
 }
 
 function mostrarTrocarSenha(forcada) {
@@ -1170,6 +1171,7 @@ function resetFormPessoa() {
   document.getElementById("ap-papel").value = "am";
   document.getElementById("ap-email").value = "";
   document.getElementById("ap-ativo").checked = true;
+  document.getElementById("ap-acesso-full").checked = false;
   document.getElementById("ap-form-titulo").textContent = "Nova Pessoa";
   document.getElementById("ap-senha-hint").textContent = "Senha inicial: SysManager@2026 — a pessoa deverá trocar no primeiro acesso.";
 }
@@ -1184,12 +1186,13 @@ async function loadAdminPessoas() {
       <td>${esc(p.email || "—")}</td>
       <td><span class="badge papel-${p.papel}">${PAPEL_LABELS[p.papel] || esc(p.papel)}</span></td>
       <td>${p.ativo ? "Sim" : "Não"}</td>
+      <td>${p.acesso_full ? "Sim" : "Não"}</td>
       <td>
         <button class="btn-small" data-editar-pessoa="${p.id}">Editar</button>
         <button class="btn-small" data-resetar-senha="${p.id}">Resetar senha</button>
       </td>
     </tr>
-  `).join("") : `<tr><td colspan="5" class="empty-state">Nenhuma pessoa cadastrada.</td></tr>`;
+  `).join("") : `<tr><td colspan="6" class="empty-state">Nenhuma pessoa cadastrada.</td></tr>`;
 
   tbody.querySelectorAll("[data-editar-pessoa]").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -1200,6 +1203,7 @@ async function loadAdminPessoas() {
       document.getElementById("ap-papel").value = p.papel;
       document.getElementById("ap-email").value = p.email || "";
       document.getElementById("ap-ativo").checked = !!p.ativo;
+      document.getElementById("ap-acesso-full").checked = !!p.acesso_full;
       document.getElementById("ap-form-titulo").textContent = `Editando: ${p.nome}`;
       document.getElementById("ap-senha-hint").textContent = "Deixe o email como está para não alterar o login.";
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1233,6 +1237,7 @@ document.getElementById("ap-salvar").addEventListener("click", async () => {
     papel: document.getElementById("ap-papel").value,
     email: email || null,
     ativo: document.getElementById("ap-ativo").checked,
+    acesso_full: document.getElementById("ap-acesso-full").checked,
   };
   try {
     if (id) {
