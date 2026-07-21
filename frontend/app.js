@@ -74,6 +74,19 @@ function pessoasAtivas(papel) {
   return state.pessoas.filter(p => p.ativo && (!papel || p.papel === papel)).sort((a, b) => a.nome.localeCompare(b.nome));
 }
 
+async function popularSelectResponsavel(selectId, valorAtual) {
+  if (!state.pessoas.length) state.pessoas = await api("/api/pessoas");
+  const sel = document.getElementById(selectId);
+  const pessoas = pessoasAtivas();
+  const nomes = new Set(pessoas.map(p => p.nome));
+  const opcaoExtra = valorAtual && !nomes.has(valorAtual)
+    ? `<option value="${esc(valorAtual)}">${esc(valorAtual)} (não cadastrado/inativo)</option>`
+    : "";
+  sel.innerHTML = `<option value="">Selecione…</option>${opcaoExtra}` +
+    pessoas.map(p => `<option value="${esc(p.nome)}">${esc(p.nome)} · ${PAPEL_LABELS[p.papel]}</option>`).join("");
+  sel.value = valorAtual || "";
+}
+
 // ---------- tabs ----------
 
 document.querySelectorAll(".tab").forEach(btn => {
@@ -436,7 +449,7 @@ function renderPainelSecoes() {
 
 let msSelectedStatus = null;
 
-function openStatusModal(clienteId, pilar) {
+async function openStatusModal(clienteId, pilar) {
   const cliente = state.clientes.find(c => c.id === clienteId);
   if (!cliente) return;
 
@@ -448,7 +461,7 @@ function openStatusModal(clienteId, pilar) {
   document.getElementById("ms-erro").classList.add("hidden");
   document.getElementById("ms-r-titulo").value = "";
   document.getElementById("ms-r-descricao").value = "";
-  document.getElementById("ms-r-responsavel").value = "";
+  await popularSelectResponsavel("ms-r-responsavel", "");
   document.getElementById("ms-r-plano").value = "";
   document.getElementById("ms-r-data-alvo").value = "";
   document.getElementById("ms-r-severidade").value = "media";
@@ -787,7 +800,7 @@ document.querySelectorAll('#view-riscos .subtabs .subtab').forEach(btn => {
 
 const STATUS_RISCO_LABELS = { aberto: "Aberto", mitigando: "Mitigando", fechado: "Fechado" };
 
-function abrirEditarRisco(riscoId) {
+async function abrirEditarRisco(riscoId) {
   const r = state.riscos.find(x => x.id === riscoId);
   if (!r) return;
 
@@ -810,7 +823,7 @@ function abrirEditarRisco(riscoId) {
   document.getElementById("er-descricao").value = r.descricao || "";
   document.getElementById("er-severidade").value = r.severidade;
   document.getElementById("er-data-alvo").value = r.data_alvo || "";
-  document.getElementById("er-responsavel").value = r.responsavel || "";
+  await popularSelectResponsavel("er-responsavel", r.responsavel || "");
   document.getElementById("er-plano").value = r.plano_mitigacao || "";
 
   const notaWrap = document.getElementById("er-nota-fechamento-wrap");
@@ -905,14 +918,14 @@ document.getElementById("fr-salvar").addEventListener("click", async () => {
   document.getElementById(id).addEventListener("change", loadRiscos);
 });
 
-document.getElementById("btn-novo-risco").addEventListener("click", () => {
+document.getElementById("btn-novo-risco").addEventListener("click", async () => {
   const clienteSel = document.getElementById("nr-cliente");
   clienteSel.innerHTML = state.clientes.map(c => `<option value="${c.id}">${esc(c.nome)}</option>`).join("");
   const pilarSel = document.getElementById("nr-pilar");
   pilarSel.innerHTML = PILAR_ORDEM.map(p => `<option value="${p}">${PILAR_LABELS[p]}</option>`).join("");
   document.getElementById("nr-titulo").value = "";
   document.getElementById("nr-descricao").value = "";
-  document.getElementById("nr-responsavel").value = "";
+  await popularSelectResponsavel("nr-responsavel", "");
   document.getElementById("nr-plano").value = "";
   document.getElementById("nr-data-alvo").value = "";
   openModal("modal-novo-risco");
