@@ -1123,8 +1123,8 @@ function populaFiltroPilarRiscos() {
 
 // ---------- ADMIN: Auditoria ----------
 
-const ENTIDADE_LABELS = { cliente: "Cliente", pessoa: "Pessoa", status: "Status RAG", risco: "Risco/Problema", criterio: "Critério" };
-const ACAO_LABELS = { criar: "Criar", editar: "Editar", fechar: "Encerrar", resetar_senha: "Resetar senha", trocar_senha: "Trocar senha" };
+const ENTIDADE_LABELS = { cliente: "Cliente", pessoa: "Pessoa", status: "Status RAG", risco: "Risco/Problema", criterio: "Critério", sistema: "Sistema" };
+const ACAO_LABELS = { criar: "Criar", editar: "Editar", fechar: "Encerrar", resetar_senha: "Resetar senha", trocar_senha: "Trocar senha", resetar: "Reset geral" };
 
 async function loadAuditoria() {
   const entidade = document.getElementById("aud-filtro-entidade").value;
