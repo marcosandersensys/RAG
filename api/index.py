@@ -1141,6 +1141,8 @@ def _enviar_email_resend(assunto: str, html: str) -> None:
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (compatible; RAGStatusDigest/1.0)",
+            "Accept": "application/json",
         },
     )
     try:
