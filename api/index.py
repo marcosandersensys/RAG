@@ -9,9 +9,12 @@ da Vercel não adiciona o diretório do próprio módulo ao sys.path, então um
 """
 import hashlib
 import hmac
+import json
 import os
 import re
 import secrets
+import urllib.error
+import urllib.request
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
@@ -21,6 +24,9 @@ import psycopg2
 import psycopg2.extras
 from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel
+
+DIGEST_EMAIL_TO = "marcos.andersen@sysmanager.com.br"
+RESEND_API_URL = "https://api.resend.com/emails"
 
 PILARES = ["prazo", "faturamento", "margem", "escopo", "rh", "csat", "contrato"]
 PAPEIS = ("bu_director", "am", "dm", "admin")
@@ -846,6 +852,13 @@ def registrar_status(payload: StatusIn, pessoa: dict = Depends(get_current_pesso
                  payload.risco.plano_mitigacao, payload.risco.data_alvo, ts, ts),
             )
 
+    anterior = conn.execute(
+        """SELECT status FROM status_history WHERE cliente_id=? AND pilar=?
+           ORDER BY atualizado_em DESC LIMIT 1""",
+        (payload.cliente_id, payload.pilar),
+    ).fetchone()
+    status_anterior = anterior["status"] if anterior else None
+
     semana = payload.semana or current_week_monday()
     ts = now_iso()
     conn.execute(
@@ -855,7 +868,11 @@ def registrar_status(payload: StatusIn, pessoa: dict = Depends(get_current_pesso
         (payload.cliente_id, payload.pilar, payload.status, semana,
          payload.comentario, pessoa["nome"], ts),
     )
-    detalhes = f"Pilar {PILAR_LABELS.get(payload.pilar, payload.pilar)} definido como {payload.status}"
+    pilar_label = PILAR_LABELS.get(payload.pilar, payload.pilar)
+    if status_anterior and status_anterior != payload.status:
+        detalhes = f"Pilar {pilar_label}: {status_anterior} → {payload.status}"
+    else:
+        detalhes = f"Pilar {pilar_label} definido como {payload.status}"
     if payload.comentario:
         detalhes += f" — {payload.comentario}"
     _log_auditoria(conn, pessoa, "status", payload.cliente_id, "editar", detalhes)
@@ -1102,3 +1119,171 @@ def resumo(pessoa: dict = Depends(get_current_pessoa)):
         "riscos_atrasados": riscos_atrasados,
         "contagem_por_pilar": contagem,
     }
+
+
+# ---------- Resumo diário por email (cron) ----------
+
+def _enviar_email_resend(assunto: str, html: str) -> None:
+    api_key = os.environ.get("RESEND_API_KEY")
+    if not api_key:
+        raise HTTPException(500, "RESEND_API_KEY não configurada")
+    remetente = os.environ.get("RESEND_FROM_EMAIL", "RAG Status <onboarding@resend.dev>")
+    payload = json.dumps({
+        "from": remetente,
+        "to": [DIGEST_EMAIL_TO],
+        "subject": assunto,
+        "html": html,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        RESEND_API_URL,
+        data=payload,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        urllib.request.urlopen(req, timeout=15)
+    except urllib.error.HTTPError as e:
+        detalhe = e.read().decode("utf-8", errors="replace")
+        raise HTTPException(502, f"Falha ao enviar email via Resend ({e.code}): {detalhe}")
+
+
+def _linha_html(cols: List[str]) -> str:
+    tds = "".join(f'<td style="padding:6px 10px;border-bottom:1px solid #E5E7EB;font-size:13px;">{c}</td>' for c in cols)
+    return f"<tr>{tds}</tr>"
+
+
+def _tabela_html(headers: List[str], linhas: List[List[str]]) -> str:
+    ths = "".join(f'<th style="padding:6px 10px;text-align:left;background:#041830;color:#fff;font-size:12px;">{h}</th>' for h in headers)
+    corpo = "".join(_linha_html(l) for l in linhas)
+    return (
+        f'<table style="border-collapse:collapse;width:100%;margin:8px 0 20px;">'
+        f"<thead><tr>{ths}</tr></thead><tbody>{corpo}</tbody></table>"
+    )
+
+
+def _montar_resumo_diario(conn, desde: str, ate: str):
+    eventos_status = conn.execute(
+        """SELECT a.entidade_id AS cliente_id, a.pessoa_nome, a.detalhes, a.criado_em,
+                  c.nome AS cliente_nome
+           FROM auditoria a
+           LEFT JOIN clientes c ON c.id = a.entidade_id
+           WHERE a.entidade = 'status' AND a.criado_em >= ? AND a.criado_em < ?
+           ORDER BY c.nome, a.criado_em""",
+        (desde, ate),
+    ).fetchall()
+
+    eventos_riscos = conn.execute(
+        """SELECT a.acao, a.pessoa_nome, a.detalhes, a.criado_em,
+                  r.titulo, r.pilar, r.tipo, c.nome AS cliente_nome
+           FROM auditoria a
+           LEFT JOIN riscos_issues r ON r.id = a.entidade_id
+           LEFT JOIN clientes c ON c.id = r.cliente_id
+           WHERE a.entidade = 'risco' AND a.criado_em >= ? AND a.criado_em < ?
+           ORDER BY a.criado_em""",
+        (desde, ate),
+    ).fetchall()
+
+    eventos_outros = conn.execute(
+        """SELECT entidade, acao, pessoa_nome, detalhes, criado_em
+           FROM auditoria
+           WHERE entidade IN ('cliente', 'pessoa', 'criterio')
+             AND NOT (entidade = 'pessoa' AND acao IN ('trocar_senha', 'resetar_senha'))
+             AND criado_em >= ? AND criado_em < ?
+           ORDER BY criado_em""",
+        (desde, ate),
+    ).fetchall()
+
+    acessos = conn.execute(
+        """SELECT p.nome, p.papel, COUNT(*) c, MIN(s.criado_em) primeiro, MAX(s.criado_em) ultimo
+           FROM sessoes s JOIN pessoas p ON p.id = s.pessoa_id
+           WHERE s.criado_em >= ? AND s.criado_em < ?
+           GROUP BY p.nome, p.papel
+           ORDER BY c DESC, p.nome""",
+        (desde, ate),
+    ).fetchall()
+
+    total_eventos = len(eventos_status) + len(eventos_riscos) + len(eventos_outros)
+    data_ref = ate[:10]
+
+    partes = [
+        f'<div style="font-family:Arial,Helvetica,sans-serif;color:#111;max-width:720px;">',
+        f'<div style="background:#041830;color:#fff;padding:16px 20px;border-radius:8px 8px 0 0;">'
+        f'<h1 style="margin:0;font-size:18px;">RAG Status — Resumo executivo diário</h1>'
+        f'<p style="margin:4px 0 0;font-size:13px;color:#B8C4D0;">Referente a {data_ref} · janela de 24h encerrada às 06:00 (Brasília)</p>'
+        f"</div>",
+        f'<div style="border:1px solid #E5E7EB;border-top:none;padding:16px 20px;border-radius:0 0 8px 8px;">',
+    ]
+
+    if total_eventos == 0:
+        partes.append('<p style="font-size:14px;">Nenhuma alteração registrada no sistema nas últimas 24 horas.</p>')
+    else:
+        partes.append(
+            f'<p style="font-size:14px;">'
+            f"{len(eventos_status)} mudança(s) de status · {len(eventos_riscos)} evento(s) de risco/problema · "
+            f"{len(eventos_outros)} alteração(ões) administrativa(s)</p>"
+        )
+
+    if eventos_status:
+        partes.append('<h2 style="font-size:15px;margin:16px 0 4px;">Mudanças de status</h2>')
+        partes.append(_tabela_html(
+            ["Cliente", "Alteração", "Por", "Quando"],
+            [[e["cliente_nome"] or f'#{e["cliente_id"]}', e["detalhes"], e["pessoa_nome"], e["criado_em"][:16].replace("T", " ")]
+             for e in eventos_status],
+        ))
+
+    if eventos_riscos:
+        partes.append('<h2 style="font-size:15px;margin:16px 0 4px;">Riscos & problemas</h2>')
+        partes.append(_tabela_html(
+            ["Cliente", "Ação", "Detalhes", "Por", "Quando"],
+            [[e["cliente_nome"] or "—", e["acao"], e["detalhes"], e["pessoa_nome"], e["criado_em"][:16].replace("T", " ")]
+             for e in eventos_riscos],
+        ))
+
+    if eventos_outros:
+        partes.append('<h2 style="font-size:15px;margin:16px 0 4px;">Outras alterações administrativas</h2>')
+        partes.append(_tabela_html(
+            ["Área", "Ação", "Detalhes", "Por", "Quando"],
+            [[e["entidade"], e["acao"], e["detalhes"], e["pessoa_nome"], e["criado_em"][:16].replace("T", " ")]
+             for e in eventos_outros],
+        ))
+
+    partes.append('<h2 style="font-size:15px;margin:16px 0 4px;">Acessos por usuário</h2>')
+    if acessos:
+        partes.append(_tabela_html(
+            ["Pessoa", "Papel", "Logins", "Primeiro acesso", "Último acesso"],
+            [[a["nome"], a["papel"], str(a["c"]), a["primeiro"][:16].replace("T", " "), a["ultimo"][:16].replace("T", " ")]
+             for a in acessos],
+        ))
+    else:
+        partes.append('<p style="font-size:13px;color:#6B7280;">Nenhum login registrado nas últimas 24 horas.</p>')
+
+    partes.append(
+        '<p style="font-size:11px;color:#9CA3AF;margin-top:20px;">'
+        "Email automático gerado pelo RAG Status. Não responda a este endereço.</p>"
+    )
+    partes.append("</div></div>")
+
+    assunto = f"RAG Status — Resumo diário {data_ref}" + (" (sem alterações)" if total_eventos == 0 else "")
+    return assunto, "".join(partes)
+
+
+@app.get("/api/cron/resumo-diario")
+def cron_resumo_diario(authorization: Optional[str] = Header(None)):
+    cron_secret = os.environ.get("CRON_SECRET")
+    if not cron_secret or authorization != f"Bearer {cron_secret}":
+        raise HTTPException(401, "Não autorizado")
+
+    ate_dt = datetime.now()
+    desde_dt = ate_dt - timedelta(hours=24)
+    ate = ate_dt.isoformat(timespec="seconds")
+    desde = desde_dt.isoformat(timespec="seconds")
+
+    conn = get_conn()
+    assunto, html = _montar_resumo_diario(conn, desde, ate)
+    conn.close()
+
+    _enviar_email_resend(assunto, html)
+    return {"ok": True, "desde": desde, "ate": ate}
