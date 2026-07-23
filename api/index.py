@@ -35,7 +35,7 @@ CATEGORIAS = [
     {"key": "financeiro", "label": "Financeiro", "pilares": ["faturamento", "receita", "margem"]},
     {"key": "execucao", "label": "Execução/Entrega", "pilares": ["prazo", "escopo"]},
     {"key": "pessoas", "label": "Pessoas", "pilares": ["rh"]},
-    {"key": "relacionamento", "label": "Relacionamento & Contrato", "pilares": ["csat", "contrato"]},
+    {"key": "relacionamento", "label": "Relacionamento", "pilares": ["csat", "contrato"]},
 ]
 
 PILAR_PESO = {
@@ -46,14 +46,14 @@ PILAR_PESO = {
 }
 
 PILAR_DONO = {
-    "faturamento": "Financeiro",
-    "receita": "Comercial/AM + Delivery Lead",
-    "margem": "Financeiro + Delivery Lead",
-    "prazo": "Delivery/PM",
-    "escopo": "Delivery/PM",
-    "rh": "RH + Delivery Lead",
-    "csat": "AM/CS",
-    "contrato": "Comercial + Delivery Lead",
+    "faturamento": "Delivery | FP&A",
+    "receita": "Delivery | FP&A",
+    "margem": "Delivery | FP&A",
+    "prazo": "Delivery",
+    "escopo": "Delivery",
+    "rh": "Delivery | RH",
+    "csat": "Account",
+    "contrato": "Account",
 }
 
 PONTUACAO_STATUS = {"G": 100, "A": 50, "R": 0}
@@ -526,7 +526,7 @@ def calcular_score(status_map: dict) -> dict:
     else:
         rag_geral = "R"
     return {
-        "score_consolidado": round(score, 1),
+        "score_consolidado": round(score),
         "rag_geral": rag_geral,
         "alertas": _calcular_alertas(status_map),
     }

@@ -2,11 +2,19 @@ const PILAR_GRUPOS = [
   { label: "Financeiro", pilares: ["faturamento", "receita", "margem"] },
   { label: "Execução/Entrega", pilares: ["prazo", "escopo"] },
   { label: "Pessoas", pilares: ["rh"] },
-  { label: "Relacionamento & Contrato", pilares: ["csat", "contrato"] },
+  { label: "Relacionamento", pilares: ["csat", "contrato"] },
 ];
 const PILAR_ORDEM = PILAR_GRUPOS.flatMap(g => g.pilares);
 const PILAR_LABELS = { faturamento: "Faturamento", receita: "Receita", margem: "Margem", prazo: "Prazo", escopo: "Escopo", rh: "RH", csat: "CSAT", contrato: "Contrato" };
+const PILAR_LABELS_CURTO = { faturamento: "FAT", receita: "REC", margem: "GM%", prazo: "PRZ", escopo: "ESC", rh: "RH", csat: "CSAT", contrato: "CTR" };
 const PILAR_CATEGORIA = Object.fromEntries(PILAR_GRUPOS.flatMap(g => g.pilares.map(p => [p, g.label])));
+const PILAR_PESO = { faturamento: 0.10, receita: 0.15, margem: 0.15, prazo: 0.10, escopo: 0.10, rh: 0.10, csat: 0.20, contrato: 0.10 };
+const PILAR_DONO = {
+  faturamento: "Delivery | FP&A", receita: "Delivery | FP&A", margem: "Delivery | FP&A",
+  prazo: "Delivery", escopo: "Delivery",
+  rh: "Delivery | RH",
+  csat: "Account", contrato: "Account",
+};
 const PAPEL_LABELS = { bu_director: "BU Director", am: "AM", dm: "DM", admin: "Admin" };
 const DIRECTOR_COLORS = ["var(--sys-magenta)", "var(--sys-blue)", "var(--sys-purple)"];
 
@@ -165,6 +173,7 @@ function mostrarApp() {
   document.getElementById("topbar-user-nome").textContent = session.pessoa.nome;
   const temAcessoFull = session.pessoa.papel === "admin" || session.pessoa.acesso_full;
   document.getElementById("tab-admin").classList.toggle("hidden", !temAcessoFull);
+  renderModeloPontuacao();
 }
 
 function mostrarTrocarSenha(forcada) {
@@ -416,14 +425,14 @@ function renderPainelSecoes() {
             <table>
               <thead>
                 <tr>
-                  <th rowspan="2">Cliente</th><th rowspan="2">Industry</th><th rowspan="2">AM</th>
-                  <th rowspan="2">DM(s)</th><th rowspan="2">Modificado</th>
-                  <th rowspan="2">RAG Geral</th><th rowspan="2">Score</th>
+                  <th rowspan="2">Cliente</th><th rowspan="2">Industry</th><th rowspan="2">Modificado</th>
+                  <th rowspan="2" class="center">RAG<br>Geral</th><th rowspan="2" class="center">Score</th>
                   ${PILAR_GRUPOS.map(g => `<th colspan="${g.pilares.length}" class="th-categoria">${esc(g.label)}</th>`).join("")}
+                  <th rowspan="2">AM</th><th rowspan="2">DM</th>
                 </tr>
-                <tr>
+                <tr class="th-pilar-row">
                   ${PILAR_ORDEM.map(p => `
-                    <th>${PILAR_LABELS[p]} <button type="button" class="th-help" data-pilar-help="${p}" title="Ver critérios de ${PILAR_LABELS[p]}">?</button></th>
+                    <th title="${esc(PILAR_LABELS[p])}">${PILAR_LABELS_CURTO[p]} <button type="button" class="th-help" data-pilar-help="${p}" title="Ver critérios de ${esc(PILAR_LABELS[p])}">?</button></th>
                   `).join("")}
                 </tr>
               </thead>
@@ -432,14 +441,14 @@ function renderPainelSecoes() {
                   <tr>
                     <td><span class="cliente-nome" data-cliente-id="${c.id}">${esc(c.nome)}</span></td>
                     <td><span class="pill">${esc(c.industry_code)}</span></td>
+                    <td>${fmtData(c.modificado)}</td>
+                    <td class="center"><span class="badge-geral ${c.rag_geral.toLowerCase()}" title="${esc((c.alertas || []).join(" · "))}">${c.rag_geral}</span></td>
+                    <td class="center">${c.score_consolidado}</td>
+                    ${PILAR_ORDEM.map(p => `
+                      <td class="center"><button class="badge-rag ${c.pilares[p].toLowerCase()}" data-cliente-id="${c.id}" data-pilar="${p}">${c.pilares[p]}</button></td>
+                    `).join("")}
                     <td>${c.am ? esc(c.am.nome) : "—"}</td>
                     <td>${esc(dmsLabel(c.dms))}</td>
-                    <td>${fmtData(c.modificado)}</td>
-                    <td><span class="badge-geral ${c.rag_geral.toLowerCase()}" title="${esc((c.alertas || []).join(" · "))}">${c.rag_geral}</span></td>
-                    <td>${c.score_consolidado}</td>
-                    ${PILAR_ORDEM.map(p => `
-                      <td><button class="badge-rag ${c.pilares[p].toLowerCase()}" data-cliente-id="${c.id}" data-pilar="${p}">${c.pilares[p]}</button></td>
-                    `).join("")}
                   </tr>
                 `).join("")}
               </tbody>
@@ -1089,6 +1098,50 @@ function renderOrgPorPessoaHtml() {
   return secoes + semClienteHtml;
 }
 
+// ---------- Modelo de Pontuação (referência estática) ----------
+
+function renderModeloPontuacao() {
+  const linhas = PILAR_GRUPOS.flatMap(cat => cat.pilares.map(p => {
+    const pesoPct = Math.round(PILAR_PESO[p] * 100);
+    return `
+      <tr>
+        <td>${esc(cat.label)}</td>
+        <td><strong>${esc(PILAR_LABELS[p])}</strong></td>
+        <td class="center">${pesoPct}%</td>
+        <td class="center"><button class="badge-rag g" style="cursor:default">G</button></td>
+        <td class="center">100</td>
+        <td class="center">${pesoPct}</td>
+        <td>${esc(PILAR_DONO[p])}</td>
+      </tr>
+    `;
+  })).join("");
+
+  document.getElementById("modelo-pontuacao-tbody").innerHTML = linhas + `
+    <tr class="modelo-pontuacao-total">
+      <td colspan="2">TOTAL</td>
+      <td class="center">100%</td>
+      <td></td><td></td>
+      <td class="center">100</td>
+      <td></td>
+    </tr>
+  `;
+
+  document.getElementById("modelo-pontuacao-regras").innerHTML = `
+    <p><strong>Score Consolidado (0-100):</strong> 100 &nbsp;·&nbsp; <strong>RAG Geral do Cliente:</strong> <button class="badge-rag g" style="cursor:default">G</button></p>
+    <p style="margin-top:10px"><strong>Regras de consolidação:</strong></p>
+    <ol style="margin-left:18px">
+      <li>Qualquer pilar em R ⇒ RAG geral = R (override automático, sem exceção).</li>
+      <li>Sem pilares em R: Score ≥ 85 ⇒ G · Score entre 50 e 84,9 ⇒ A · Score &lt; 50 ⇒ R.</li>
+      <li>Pesos e faixas de corte (85 / 50) são parametrizáveis — ajustar conforme maturidade da carteira.</li>
+    </ol>
+    <table style="margin-top:12px;border-collapse:collapse;width:160px">
+      <tr><td style="padding:4px 12px 4px 0"><button class="badge-rag g" style="cursor:default">G</button></td><td style="padding:4px 0">100%</td></tr>
+      <tr><td style="padding:4px 12px 4px 0"><button class="badge-rag a" style="cursor:default">A</button></td><td style="padding:4px 0">50%</td></tr>
+      <tr><td style="padding:4px 12px 4px 0"><button class="badge-rag r" style="cursor:default">R</button></td><td style="padding:4px 0">0%</td></tr>
+    </table>
+  `;
+}
+
 // ---------- CRITÉRIOS tab ----------
 
 async function loadCriterios() {
@@ -1463,22 +1516,23 @@ document.getElementById("btn-export-painel-pdf").addEventListener("click", () =>
       <table>
         <thead>
           <tr>
-            <th rowspan="2">Cliente</th><th rowspan="2">Industry</th><th rowspan="2">AM</th><th rowspan="2">DM(s)</th>
+            <th rowspan="2">Cliente</th><th rowspan="2">Industry</th>
             <th rowspan="2">RAG Geral</th><th rowspan="2">Score</th>
             ${PILAR_GRUPOS.map(g => `<th colspan="${g.pilares.length}">${esc(g.label)}</th>`).join("")}
+            <th rowspan="2">AM</th><th rowspan="2">DM</th>
           </tr>
-          <tr>${PILAR_ORDEM.map(p => `<th>${PILAR_LABELS[p]}</th>`).join("")}</tr>
+          <tr>${PILAR_ORDEM.map(p => `<th>${PILAR_LABELS_CURTO[p]}</th>`).join("")}</tr>
         </thead>
         <tbody>
           ${clientesDoDir.map(c => `
             <tr>
               <td>${esc(c.nome)}</td>
               <td>${esc(c.industry_code)}</td>
-              <td>${c.am ? esc(c.am.nome) : "—"}</td>
-              <td>${esc(dmsLabel(c.dms))}</td>
               <td>${c.rag_geral}</td>
               <td>${c.score_consolidado}</td>
               ${PILAR_ORDEM.map(p => `<td>${c.pilares[p]}</td>`).join("")}
+              <td>${c.am ? esc(c.am.nome) : "—"}</td>
+              <td>${esc(dmsLabel(c.dms))}</td>
             </tr>
           `).join("")}
         </tbody>
