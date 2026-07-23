@@ -145,6 +145,10 @@ tr.risco-atrasado:hover td{background:rgba(220,38,38,.09)}
 .th-categoria{text-align:center;font-size:13px;font-weight:800;letter-spacing:.05em}
 .th-pilar-row th{text-align:center;font-size:10.5px;font-weight:600}
 .center{text-align:center}
+.col-ind{width:52px}
+.col-mod{width:60px}
+.col-am{width:88px;white-space:nowrap}
+.divisor-categoria{border-left:1px solid var(--border-subtle)}
 
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
 .dot-g{background:var(--success)}

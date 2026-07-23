@@ -33,7 +33,7 @@ PAPEIS = ("bu_director", "am", "dm", "admin")
 
 CATEGORIAS = [
     {"key": "financeiro", "label": "Financeiro", "pilares": ["faturamento", "receita", "margem"]},
-    {"key": "execucao", "label": "Execução/Entrega", "pilares": ["prazo", "escopo"]},
+    {"key": "execucao", "label": "Execução", "pilares": ["prazo", "escopo"]},
     {"key": "pessoas", "label": "Pessoas", "pilares": ["rh"]},
     {"key": "relacionamento", "label": "Relacionamento", "pilares": ["csat", "contrato"]},
 ]

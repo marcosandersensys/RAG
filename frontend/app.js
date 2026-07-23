@@ -1,6 +1,6 @@
 const PILAR_GRUPOS = [
   { label: "Financeiro", pilares: ["faturamento", "receita", "margem"] },
-  { label: "Execução/Entrega", pilares: ["prazo", "escopo"] },
+  { label: "Execução", pilares: ["prazo", "escopo"] },
   { label: "Pessoas", pilares: ["rh"] },
   { label: "Relacionamento", pilares: ["csat", "contrato"] },
 ];
@@ -8,6 +8,7 @@ const PILAR_ORDEM = PILAR_GRUPOS.flatMap(g => g.pilares);
 const PILAR_LABELS = { faturamento: "Faturamento", receita: "Receita", margem: "Margem", prazo: "Prazo", escopo: "Escopo", rh: "RH", csat: "CSAT", contrato: "Contrato" };
 const PILAR_LABELS_CURTO = { faturamento: "FAT", receita: "REC", margem: "GM%", prazo: "PRZ", escopo: "ESC", rh: "RH", csat: "CSAT", contrato: "CTR" };
 const PILAR_CATEGORIA = Object.fromEntries(PILAR_GRUPOS.flatMap(g => g.pilares.map(p => [p, g.label])));
+const PILAR_INICIO_CATEGORIA = new Set(PILAR_GRUPOS.slice(1).map(g => g.pilares[0]));
 const PILAR_PESO = { faturamento: 0.10, receita: 0.15, margem: 0.15, prazo: 0.10, escopo: 0.10, rh: 0.10, csat: 0.20, contrato: 0.10 };
 const PILAR_DONO = {
   faturamento: "Delivery | FP&A", receita: "Delivery | FP&A", margem: "Delivery | FP&A",
@@ -77,6 +78,12 @@ function fmtData(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+}
+
+function fmtDataCurta(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
 
 function fmtDataLonga(iso) {
@@ -425,14 +432,14 @@ function renderPainelSecoes() {
             <table>
               <thead>
                 <tr>
-                  <th rowspan="2">Cliente</th><th rowspan="2">Industry</th><th rowspan="2">Modificado</th>
+                  <th rowspan="2">Cliente</th><th rowspan="2" class="col-ind">IND</th><th rowspan="2" class="col-mod">MOD</th>
                   <th rowspan="2" class="center">RAG<br>Geral</th><th rowspan="2" class="center">Score</th>
-                  ${PILAR_GRUPOS.map(g => `<th colspan="${g.pilares.length}" class="th-categoria">${esc(g.label)}</th>`).join("")}
-                  <th rowspan="2">AM</th><th rowspan="2">DM</th>
+                  ${PILAR_GRUPOS.map((g, i) => `<th colspan="${g.pilares.length}" class="th-categoria${i > 0 ? " divisor-categoria" : ""}">${esc(g.label)}</th>`).join("")}
+                  <th rowspan="2" class="col-am">AM</th><th rowspan="2">DM</th>
                 </tr>
                 <tr class="th-pilar-row">
                   ${PILAR_ORDEM.map(p => `
-                    <th title="${esc(PILAR_LABELS[p])}">${PILAR_LABELS_CURTO[p]} <button type="button" class="th-help" data-pilar-help="${p}" title="Ver critérios de ${esc(PILAR_LABELS[p])}">?</button></th>
+                    <th title="${esc(PILAR_LABELS[p])}" class="${PILAR_INICIO_CATEGORIA.has(p) ? "divisor-categoria" : ""}">${PILAR_LABELS_CURTO[p]} <button type="button" class="th-help" data-pilar-help="${p}" title="Ver critérios de ${esc(PILAR_LABELS[p])}">?</button></th>
                   `).join("")}
                 </tr>
               </thead>
@@ -440,14 +447,14 @@ function renderPainelSecoes() {
                 ${clientesDoDir.map(c => `
                   <tr>
                     <td><span class="cliente-nome" data-cliente-id="${c.id}">${esc(c.nome)}</span></td>
-                    <td><span class="pill">${esc(c.industry_code)}</span></td>
-                    <td>${fmtData(c.modificado)}</td>
+                    <td class="col-ind"><span class="pill">${esc(c.industry_code)}</span></td>
+                    <td class="col-mod">${fmtDataCurta(c.modificado)}</td>
                     <td class="center"><span class="badge-geral ${c.rag_geral.toLowerCase()}" title="${esc((c.alertas || []).join(" · "))}">${c.rag_geral}</span></td>
                     <td class="center">${c.score_consolidado}</td>
                     ${PILAR_ORDEM.map(p => `
-                      <td class="center"><button class="badge-rag ${c.pilares[p].toLowerCase()}" data-cliente-id="${c.id}" data-pilar="${p}">${c.pilares[p]}</button></td>
+                      <td class="center${PILAR_INICIO_CATEGORIA.has(p) ? " divisor-categoria" : ""}"><button class="badge-rag ${c.pilares[p].toLowerCase()}" data-cliente-id="${c.id}" data-pilar="${p}">${c.pilares[p]}</button></td>
                     `).join("")}
-                    <td>${c.am ? esc(c.am.nome) : "—"}</td>
+                    <td class="col-am">${c.am ? esc(c.am.nome) : "—"}</td>
                     <td>${esc(dmsLabel(c.dms))}</td>
                   </tr>
                 `).join("")}
