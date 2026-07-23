@@ -342,11 +342,12 @@ async function abrirCriteriosReferencia(pilarFoco) {
   if (pilarFoco) {
     corpo.innerHTML = pilarBlock(pilarFoco) || `<p>Nenhum critério cadastrado para ${esc(PILAR_LABELS[pilarFoco] || pilarFoco)}.</p>`;
   } else {
-    corpo.innerHTML = PILAR_GRUPOS.map(cat => {
+    const criteriosHtml = PILAR_GRUPOS.map(cat => {
       const blocos = cat.pilares.map(pilarBlock).join("");
       if (!blocos.trim()) return "";
       return `<h3 class="crit-ref-categoria">${esc(cat.label)}</h3>${blocos}`;
     }).join("");
+    corpo.innerHTML = criteriosHtml + modeloPontuacaoTabelaHtml() + regrasConsolidacaoHtml();
   }
 
   openModal("modal-criterios-ref");
@@ -1127,13 +1128,7 @@ function regrasConsolidacaoHtml() {
   `;
 }
 
-function abrirRagGeralInfo() {
-  document.getElementById("criterios-ref-titulo").textContent = "RAG Geral — Regras de Consolidação";
-  document.getElementById("criterios-ref-corpo").innerHTML = regrasConsolidacaoHtml();
-  openModal("modal-criterios-ref");
-}
-
-function renderModeloPontuacao() {
+function modeloPontuacaoLinhasHtml() {
   const linhas = PILAR_GRUPOS.flatMap(cat => cat.pilares.map(p => {
     const pesoPct = Math.round(PILAR_PESO[p] * 100);
     return `
@@ -1148,7 +1143,7 @@ function renderModeloPontuacao() {
     `;
   })).join("");
 
-  document.getElementById("modelo-pontuacao-tbody").innerHTML = linhas + `
+  return linhas + `
     <tr class="modelo-pontuacao-total">
       <td colspan="2">TOTAL</td>
       <td class="center">100%</td>
@@ -1157,7 +1152,28 @@ function renderModeloPontuacao() {
       <td></td>
     </tr>
   `;
+}
 
+function modeloPontuacaoTabelaHtml() {
+  return `
+    <h4>Modelo de Pontuação</h4>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Categoria</th><th>Pilar</th><th>Peso</th><th>Pontuação</th><th>Peso × Pontuação</th><th>Dono</th></tr></thead>
+        <tbody>${modeloPontuacaoLinhasHtml()}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function abrirRagGeralInfo() {
+  document.getElementById("criterios-ref-titulo").textContent = "RAG Geral — Regras de Consolidação";
+  document.getElementById("criterios-ref-corpo").innerHTML = modeloPontuacaoTabelaHtml() + regrasConsolidacaoHtml();
+  openModal("modal-criterios-ref");
+}
+
+function renderModeloPontuacao() {
+  document.getElementById("modelo-pontuacao-tbody").innerHTML = modeloPontuacaoLinhasHtml();
   document.getElementById("modelo-pontuacao-regras").innerHTML = regrasConsolidacaoHtml();
 }
 
