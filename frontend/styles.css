@@ -84,6 +84,10 @@ nav::-webkit-scrollbar{display:none}
 .summary-card .num{font-family:var(--font-heading);font-size:26px;font-weight:800;color:var(--sys-blue)}
 .summary-card .label{font-size:11px;color:var(--text-muted);margin-top:2px;font-weight:500}
 .summary-card.alert .num{color:var(--destructive)}
+.wow{font-size:10.5px;font-weight:700;margin-top:6px}
+.wow-up{color:var(--destructive)}
+.wow-down{color:var(--success)}
+.wow-flat{color:var(--text-muted)}
 
 /* TOOLBAR */
 .toolbar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center}

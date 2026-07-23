@@ -159,6 +159,15 @@ CREATE TABLE IF NOT EXISTS auditoria (
 
 CREATE INDEX IF NOT EXISTS idx_auditoria_criado_em ON auditoria(criado_em DESC);
 CREATE INDEX IF NOT EXISTS idx_auditoria_entidade ON auditoria(entidade, entidade_id);
+
+CREATE TABLE IF NOT EXISTS metricas_diarias (
+    data TEXT PRIMARY KEY,
+    clientes_rag_r INTEGER NOT NULL,
+    clientes_rag_a INTEGER NOT NULL,
+    riscos_abertos INTEGER NOT NULL,
+    riscos_atrasados INTEGER NOT NULL,
+    criado_em TEXT NOT NULL
+);
 """
 
 
@@ -530,6 +539,61 @@ def calcular_score(status_map: dict) -> dict:
         "rag_geral": rag_geral,
         "alertas": _calcular_alertas(status_map),
     }
+
+
+def _metricas_atuais(conn, cliente_ids=None) -> dict:
+    """{clientes_rag_r, clientes_rag_a, riscos_abertos, riscos_atrasados} — cliente_ids=None
+    para todos os clientes ativos (visão irrestrita)."""
+    query = "SELECT id FROM clientes WHERE ativo=1"
+    params = []
+    if cliente_ids is not None:
+        query += " AND id = ANY(?)"
+        params.append(list(cliente_ids))
+    clientes = conn.execute(query, params).fetchall()
+    status_por_cliente = _all_current_status(conn)
+
+    clientes_rag_r = 0
+    clientes_rag_a = 0
+    for c in clientes:
+        status_map = status_por_cliente.get(c["id"], {})
+        pilares_status = {p: status_map.get(p, {}).get("status", "G") for p in PILARES}
+        rag = calcular_score(pilares_status)["rag_geral"]
+        if rag == "R":
+            clientes_rag_r += 1
+        elif rag == "A":
+            clientes_rag_a += 1
+
+    riscos_query = "SELECT COUNT(*) c FROM riscos_issues WHERE status != 'fechado'"
+    riscos_params = []
+    if cliente_ids is not None:
+        riscos_query += " AND cliente_id = ANY(?)"
+        riscos_params.append(list(cliente_ids))
+    riscos_abertos = conn.execute(riscos_query, riscos_params).fetchone()["c"]
+
+    atrasados_query = (
+        "SELECT COUNT(*) c FROM riscos_issues WHERE status != 'fechado' "
+        "AND data_alvo IS NOT NULL AND data_alvo < ?"
+    )
+    atrasados_params = [hoje_str()]
+    if cliente_ids is not None:
+        atrasados_query += " AND cliente_id = ANY(?)"
+        atrasados_params.append(list(cliente_ids))
+    riscos_atrasados = conn.execute(atrasados_query, atrasados_params).fetchone()["c"]
+
+    return {
+        "clientes_rag_r": clientes_rag_r,
+        "clientes_rag_a": clientes_rag_a,
+        "riscos_abertos": riscos_abertos,
+        "riscos_atrasados": riscos_atrasados,
+    }
+
+
+def _variacao_pct(atual: int, anterior: Optional[int]) -> Optional[float]:
+    if anterior is None:
+        return None
+    if anterior == 0:
+        return None if atual == 0 else 100.0
+    return round((atual - anterior) / anterior * 100, 1)
 
 
 # ---------- Auditoria ----------
@@ -1132,10 +1196,12 @@ def resumo(pessoa: dict = Depends(get_current_pessoa)):
         conn.close()
         return {
             "total_clientes": 0,
-            "clientes_criticos": 0,
+            "clientes_rag_r": 0,
+            "clientes_rag_a": 0,
             "riscos_abertos": 0,
             "riscos_atrasados": 0,
             "contagem_por_pilar": {p: {"G": 0, "A": 0, "R": 0} for p in PILARES},
+            "wow": None,
         }
 
     query = "SELECT id FROM clientes WHERE ativo=1"
@@ -1145,41 +1211,38 @@ def resumo(pessoa: dict = Depends(get_current_pessoa)):
         params.append(list(ids))
     clientes = conn.execute(query, params).fetchall()
     status_por_cliente = _all_current_status(conn)
+    metricas = _metricas_atuais(conn, ids)
 
-    riscos_query = "SELECT COUNT(*) c FROM riscos_issues WHERE status != 'fechado'"
-    riscos_params = []
-    if ids is not None:
-        riscos_query += " AND cliente_id = ANY(?)"
-        riscos_params.append(list(ids))
-    riscos_abertos = conn.execute(riscos_query, riscos_params).fetchone()["c"]
-
-    atrasados_query = (
-        "SELECT COUNT(*) c FROM riscos_issues WHERE status != 'fechado' "
-        "AND data_alvo IS NOT NULL AND data_alvo < ?"
-    )
-    atrasados_params = [hoje_str()]
-    if ids is not None:
-        atrasados_query += " AND cliente_id = ANY(?)"
-        atrasados_params.append(list(ids))
-    riscos_atrasados = conn.execute(atrasados_query, atrasados_params).fetchone()["c"]
+    wow = None
+    if ids is None:
+        data_passada = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+        snapshot = conn.execute(
+            "SELECT * FROM metricas_diarias WHERE data=?", (data_passada,)
+        ).fetchone()
+        if snapshot:
+            wow = {
+                "clientes_rag_r": _variacao_pct(metricas["clientes_rag_r"], snapshot["clientes_rag_r"]),
+                "clientes_rag_a": _variacao_pct(metricas["clientes_rag_a"], snapshot["clientes_rag_a"]),
+                "riscos_abertos": _variacao_pct(metricas["riscos_abertos"], snapshot["riscos_abertos"]),
+                "riscos_atrasados": _variacao_pct(metricas["riscos_atrasados"], snapshot["riscos_atrasados"]),
+            }
     conn.close()
 
     contagem = {p: {"G": 0, "A": 0, "R": 0} for p in PILARES}
-    clientes_criticos = 0
     for c in clientes:
         status_map = status_por_cliente.get(c["id"], {})
         pilares_status = {p: status_map.get(p, {}).get("status", "G") for p in PILARES}
         for p in PILARES:
             contagem[p][pilares_status[p]] += 1
-        if calcular_score(pilares_status)["rag_geral"] == "R":
-            clientes_criticos += 1
 
     return {
         "total_clientes": len(clientes),
-        "clientes_criticos": clientes_criticos,
-        "riscos_abertos": riscos_abertos,
-        "riscos_atrasados": riscos_atrasados,
+        "clientes_rag_r": metricas["clientes_rag_r"],
+        "clientes_rag_a": metricas["clientes_rag_a"],
+        "riscos_abertos": metricas["riscos_abertos"],
+        "riscos_atrasados": metricas["riscos_atrasados"],
         "contagem_por_pilar": contagem,
+        "wow": wow,
     }
 
 
@@ -1347,6 +1410,22 @@ def cron_resumo_diario(authorization: Optional[str] = Header(None)):
 
     conn = get_conn()
     assunto, html = _montar_resumo_diario(conn, desde, ate)
+
+    metricas = _metricas_atuais(conn)
+    hoje = ate_dt.strftime("%Y-%m-%d")
+    conn.execute(
+        """INSERT INTO metricas_diarias (data, clientes_rag_r, clientes_rag_a, riscos_abertos, riscos_atrasados, criado_em)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT (data) DO UPDATE SET
+               clientes_rag_r = EXCLUDED.clientes_rag_r,
+               clientes_rag_a = EXCLUDED.clientes_rag_a,
+               riscos_abertos = EXCLUDED.riscos_abertos,
+               riscos_atrasados = EXCLUDED.riscos_atrasados,
+               criado_em = EXCLUDED.criado_em""",
+        (hoje, metricas["clientes_rag_r"], metricas["clientes_rag_a"],
+         metricas["riscos_abertos"], metricas["riscos_atrasados"], ate),
+    )
+    conn.commit()
     conn.close()
 
     _enviar_email_resend(assunto, html)

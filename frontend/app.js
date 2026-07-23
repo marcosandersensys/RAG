@@ -298,13 +298,31 @@ async function loadPainel() {
   renderPainelSecoes();
 }
 
+function wowHtml(pct) {
+  if (pct === null || pct === undefined) return `<div class="wow wow-flat">— vs sem. passada</div>`;
+  if (pct === 0) return `<div class="wow wow-flat">= vs sem. passada</div>`;
+  const seta = pct > 0 ? "▲" : "▼";
+  const classe = pct > 0 ? "wow-up" : "wow-down";
+  return `<div class="wow ${classe}">${seta} ${Math.abs(pct)}% vs sem. passada</div>`;
+}
+
 function renderResumoCards(resumo) {
   const el = document.getElementById("resumo-cards");
+  const wow = resumo.wow || {};
   el.innerHTML = `
     <div class="summary-card"><div class="num">${resumo.total_clientes}</div><div class="label">Clientes ativos</div></div>
-    <div class="summary-card ${resumo.clientes_criticos > 0 ? "alert" : ""}"><div class="num">${resumo.clientes_criticos}</div><div class="label">Clientes com pilar vermelho</div></div>
-    <div class="summary-card ${resumo.riscos_abertos > 0 ? "alert" : ""}"><div class="num">${resumo.riscos_abertos}</div><div class="label">Riscos/Problemas em aberto</div></div>
-    <div class="summary-card ${resumo.riscos_atrasados > 0 ? "alert" : ""}"><div class="num">${resumo.riscos_atrasados}</div><div class="label">Riscos/Problemas atrasados</div></div>
+    <div class="summary-card ${resumo.clientes_rag_r > 0 ? "alert" : ""}">
+      <div class="num">${resumo.clientes_rag_r}</div><div class="label">Clientes RAG Geral = R</div>${wowHtml(wow.clientes_rag_r)}
+    </div>
+    <div class="summary-card ${resumo.clientes_rag_a > 0 ? "alert" : ""}">
+      <div class="num">${resumo.clientes_rag_a}</div><div class="label">Clientes RAG Geral = A</div>${wowHtml(wow.clientes_rag_a)}
+    </div>
+    <div class="summary-card ${resumo.riscos_abertos > 0 ? "alert" : ""}">
+      <div class="num">${resumo.riscos_abertos}</div><div class="label">Riscos/Problemas em aberto</div>${wowHtml(wow.riscos_abertos)}
+    </div>
+    <div class="summary-card ${resumo.riscos_atrasados > 0 ? "alert" : ""}">
+      <div class="num">${resumo.riscos_atrasados}</div><div class="label">Riscos/Problemas atrasados</div>${wowHtml(wow.riscos_atrasados)}
+    </div>
   `;
 }
 
