@@ -356,3 +356,25 @@ tr.risco-atrasado:hover td{background:rgba(220,38,38,.09)}
   .print-view th{background:var(--table-header-bg) !important;color:#fff !important;padding:6px 8px;text-align:left;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .print-view td{padding:6px 8px;border-bottom:1px solid #ddd}
 }
+
+/* AJUDA (renderização do ESPECIFICACAO_FUNCIONAL.md) */
+.ajuda-content{padding:28px 32px;max-width:820px;margin:0 auto;line-height:1.65;color:var(--text-body)}
+.ajuda-content h1{font-size:26px;font-weight:800;margin:0 0 16px;color:var(--sys-blue)}
+.ajuda-content h2{font-size:19px;font-weight:800;margin:32px 0 12px;padding-top:16px;border-top:1px solid var(--border-subtle)}
+.ajuda-content h2:first-of-type{border-top:none;padding-top:0;margin-top:8px}
+.ajuda-content h3{font-size:15px;font-weight:700;margin:20px 0 8px;color:var(--sys-blue)}
+.ajuda-content h4{font-size:13px;font-weight:700;margin:16px 0 6px;text-transform:none;color:var(--text-primary);letter-spacing:0}
+.ajuda-content p{font-size:13px;margin:0 0 12px}
+.ajuda-content ul,.ajuda-content ol{margin:0 0 12px 22px;font-size:13px}
+.ajuda-content li{margin-bottom:4px}
+.ajuda-content strong{color:var(--text-primary)}
+.ajuda-content a{color:var(--sys-blue)}
+.ajuda-content hr{border:none;border-top:1px solid var(--border-subtle);margin:24px 0}
+.ajuda-content blockquote{margin:0 0 12px;padding:8px 14px;border-left:3px solid var(--sys-blue);background:var(--bg-page);font-size:13px;color:var(--text-muted)}
+.ajuda-content code{background:var(--bg-page);padding:1px 5px;border-radius:4px;font-size:12px;font-family:ui-monospace,monospace}
+.ajuda-content pre{background:var(--bg-page);padding:12px 14px;border-radius:var(--radius-lg);overflow-x:auto;margin:0 0 12px}
+.ajuda-content pre code{background:none;padding:0}
+.ajuda-content table{width:100%;border-collapse:collapse;font-size:12px;margin:0 0 16px}
+.ajuda-content th{background:var(--table-header-bg);color:#fff;text-align:left;padding:8px 12px;font-weight:700}
+.ajuda-content td{padding:8px 12px;border-bottom:1px solid var(--border-subtle)}
+.ajuda-content tbody tr:nth-child(even) td{background:#FAFBFC}

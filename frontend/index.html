@@ -7,6 +7,7 @@
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="stylesheet" href="styles.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 </head>
 <body>
 
@@ -95,6 +96,7 @@
       <button class="tab" data-view="riscos">Riscos &amp; Problemas</button>
       <button class="tab" data-view="organizacao">Organização</button>
       <button class="tab" data-view="admin" id="tab-admin">Admin</button>
+      <button class="tab" data-view="ajuda">Ajuda</button>
     </nav>
   </header>
 
@@ -348,6 +350,15 @@
               <tbody id="auditoria-tbody"></tbody>
             </table>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- AJUDA -->
+    <section id="view-ajuda" class="view">
+      <div class="card">
+        <div id="ajuda-conteudo" class="ajuda-content">
+          <p class="hint">Carregando…</p>
         </div>
       </div>
     </section>

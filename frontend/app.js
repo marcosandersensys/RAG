@@ -129,6 +129,28 @@ document.querySelector('.tab[data-view="admin"]').addEventListener("click", () =
   loadCriterios();
   loadAuditoria();
 });
+document.querySelector('.tab[data-view="ajuda"]').addEventListener("click", carregarAjuda);
+
+let ajudaCarregada = false;
+async function carregarAjuda() {
+  if (ajudaCarregada) return;
+  const el = document.getElementById("ajuda-conteudo");
+  try {
+    const res = await fetch("/ESPECIFICACAO_FUNCIONAL.md");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const md = await res.text();
+    el.innerHTML = window.marked.parse(md);
+    el.querySelectorAll("table").forEach(tabela => {
+      const wrap = document.createElement("div");
+      wrap.className = "table-wrap";
+      tabela.parentNode.insertBefore(wrap, tabela);
+      wrap.appendChild(tabela);
+    });
+    ajudaCarregada = true;
+  } catch (e) {
+    el.innerHTML = `<p class="hint">Não foi possível carregar o conteúdo de ajuda (${esc(e.message)}).</p>`;
+  }
+}
 
 document.querySelectorAll('.org-toggle .subtab').forEach(btn => {
   btn.addEventListener("click", () => {
