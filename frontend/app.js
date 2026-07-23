@@ -309,6 +309,40 @@ function renderResumoCards(resumo) {
 
 // ---------- Critérios de referência (help contextual no Painel) ----------
 
+function criteriosTabelaHtml(criterios) {
+  const grupos = new Map();
+  criterios.forEach(c => {
+    const key = `${c.pilar}|||${c.linha}`;
+    if (!grupos.has(key)) grupos.set(key, { pilar: c.pilar, linha: c.linha, itens: {} });
+    grupos.get(key).itens[c.status] = c;
+  });
+  const todosGrupos = [...grupos.values()];
+
+  const linhaHtml = g => `
+    <tr>
+      <td><strong>${esc(PILAR_LABELS[g.pilar] || g.pilar)}</strong></td>
+      <td>${esc(g.linha)}</td>
+      ${["G", "A", "R"].map(s => `<td>${esc(g.itens[s] ? g.itens[s].descricao : "—")}</td>`).join("")}
+    </tr>
+  `;
+
+  const linhas = PILAR_GRUPOS.map(cat => {
+    const gruposCategoria = todosGrupos.filter(g => cat.pilares.includes(g.pilar));
+    if (!gruposCategoria.length) return "";
+    return `<tr class="criterios-categoria-row"><td colspan="5"><strong>${esc(cat.label)}</strong></td></tr>`
+      + gruposCategoria.map(linhaHtml).join("");
+  }).join("");
+
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Pilar</th><th>Linha</th><th class="col-g">G</th><th class="col-a">A</th><th class="col-r">R</th></tr></thead>
+        <tbody>${linhas}</tbody>
+      </table>
+    </div>
+  `;
+}
+
 async function abrirCriteriosReferencia(pilarFoco) {
   document.getElementById("criterios-ref-titulo").textContent = "Critérios de Referência (G/A/R)";
   const criterios = await api("/api/criterios");
@@ -342,12 +376,8 @@ async function abrirCriteriosReferencia(pilarFoco) {
   if (pilarFoco) {
     corpo.innerHTML = pilarBlock(pilarFoco) || `<p>Nenhum critério cadastrado para ${esc(PILAR_LABELS[pilarFoco] || pilarFoco)}.</p>`;
   } else {
-    const criteriosHtml = PILAR_GRUPOS.map(cat => {
-      const blocos = cat.pilares.map(pilarBlock).join("");
-      if (!blocos.trim()) return "";
-      return `<h3 class="crit-ref-categoria">${esc(cat.label)}</h3>${blocos}`;
-    }).join("");
-    corpo.innerHTML = criteriosHtml + modeloPontuacaoTabelaHtml() + regrasConsolidacaoHtml();
+    corpo.innerHTML = `<h4>Critérios (G/A/R) por Pilar</h4>${criteriosTabelaHtml(criterios)}`
+      + modeloPontuacaoTabelaHtml() + regrasConsolidacaoHtml();
   }
 
   openModal("modal-criterios-ref");
