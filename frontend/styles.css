@@ -144,7 +144,7 @@ tr.risco-atrasado:hover td{background:rgba(220,38,38,.09)}
 .badge-geral.r{border-color:var(--destructive);color:var(--destructive)}
 
 /* Cabeçalho de categoria (agrupa colunas de pilar) */
-.th-categoria{text-align:center;font-size:13px;font-weight:800;letter-spacing:.05em}
+.th-categoria{text-align:center;font-size:13px;font-weight:800;letter-spacing:.05em;white-space:normal;overflow-wrap:break-word;padding:12px 6px}
 .th-pilar-row th{text-align:center;font-size:10.5px;font-weight:600}
 .center{text-align:center}
 .col-ind{width:52px}

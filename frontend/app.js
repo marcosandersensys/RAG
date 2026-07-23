@@ -9,6 +9,7 @@ const PILAR_LABELS = { faturamento: "Faturamento", receita: "Receita", margem: "
 const PILAR_LABELS_CURTO = { faturamento: "FAT", receita: "REC", margem: "GM%", prazo: "PRZ", escopo: "ESC", rh: "RH", csat: "CSAT", contrato: "CTR" };
 const PILAR_CATEGORIA = Object.fromEntries(PILAR_GRUPOS.flatMap(g => g.pilares.map(p => [p, g.label])));
 const PILAR_INICIO_CATEGORIA = new Set(PILAR_GRUPOS.map(g => g.pilares[0]));
+const PILAR_CATEGORIA_TAMANHO = Object.fromEntries(PILAR_GRUPOS.map(g => [g.label, g.pilares.length]));
 const PILAR_PESO = { faturamento: 0.10, receita: 0.15, margem: 0.15, prazo: 0.10, escopo: 0.10, rh: 0.10, csat: 0.20, contrato: 0.10 };
 const PILAR_DONO = {
   faturamento: "Delivery | FP&A", receita: "Delivery | FP&A", margem: "Delivery | FP&A",
@@ -462,7 +463,7 @@ function renderPainelSecoes() {
                 <col style="width:60px">
                 <col style="width:70px">
                 <col style="width:55px">
-                ${PILAR_ORDEM.map(() => `<col style="width:56px">`).join("")}
+                ${PILAR_ORDEM.map(p => `<col style="width:${PILAR_CATEGORIA_TAMANHO[PILAR_CATEGORIA[p]] === 1 ? 84 : 56}px">`).join("")}
                 <col style="width:88px">
                 <col style="width:96px">
               </colgroup>
