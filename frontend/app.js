@@ -455,7 +455,17 @@ function renderPainelSecoes() {
         </div>
         <div class="card">
           <div class="table-wrap">
-            <table>
+            <table class="tabela-painel">
+              <colgroup>
+                <col style="width:130px">
+                <col style="width:52px">
+                <col style="width:60px">
+                <col style="width:70px">
+                <col style="width:55px">
+                ${PILAR_ORDEM.map(() => `<col style="width:56px">`).join("")}
+                <col style="width:88px">
+                <col style="width:96px">
+              </colgroup>
               <thead>
                 <tr>
                   <th rowspan="2">Cliente</th><th rowspan="2" class="col-ind">IND</th><th rowspan="2" class="col-mod">MOD</th>
