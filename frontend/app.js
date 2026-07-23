@@ -8,7 +8,7 @@ const PILAR_ORDEM = PILAR_GRUPOS.flatMap(g => g.pilares);
 const PILAR_LABELS = { faturamento: "Faturamento", receita: "Receita", margem: "Margem", prazo: "Prazo", escopo: "Escopo", rh: "RH", csat: "CSAT", contrato: "Contrato" };
 const PILAR_LABELS_CURTO = { faturamento: "FAT", receita: "REC", margem: "GM%", prazo: "PRZ", escopo: "ESC", rh: "RH", csat: "CSAT", contrato: "CTR" };
 const PILAR_CATEGORIA = Object.fromEntries(PILAR_GRUPOS.flatMap(g => g.pilares.map(p => [p, g.label])));
-const PILAR_INICIO_CATEGORIA = new Set(PILAR_GRUPOS.slice(1).map(g => g.pilares[0]));
+const PILAR_INICIO_CATEGORIA = new Set(PILAR_GRUPOS.map(g => g.pilares[0]));
 const PILAR_PESO = { faturamento: 0.10, receita: 0.15, margem: 0.15, prazo: 0.10, escopo: 0.10, rh: 0.10, csat: 0.20, contrato: 0.10 };
 const PILAR_DONO = {
   faturamento: "Delivery | FP&A", receita: "Delivery | FP&A", margem: "Delivery | FP&A",
@@ -338,23 +338,17 @@ async function abrirCriteriosReferencia(pilarFoco) {
   };
 
   const corpo = document.getElementById("criterios-ref-corpo");
-  corpo.innerHTML = PILAR_GRUPOS.map(cat => {
-    const blocos = cat.pilares.map(pilarBlock).join("");
-    if (!blocos.trim()) return "";
-    return `<h3 class="crit-ref-categoria">${esc(cat.label)}</h3>${blocos}`;
-  }).join("");
+  if (pilarFoco) {
+    corpo.innerHTML = pilarBlock(pilarFoco) || `<p>Nenhum critério cadastrado para ${esc(PILAR_LABELS[pilarFoco] || pilarFoco)}.</p>`;
+  } else {
+    corpo.innerHTML = PILAR_GRUPOS.map(cat => {
+      const blocos = cat.pilares.map(pilarBlock).join("");
+      if (!blocos.trim()) return "";
+      return `<h3 class="crit-ref-categoria">${esc(cat.label)}</h3>${blocos}`;
+    }).join("");
+  }
 
   openModal("modal-criterios-ref");
-
-  if (pilarFoco) {
-    setTimeout(() => {
-      const alvo = document.getElementById(`crit-ref-${pilarFoco}`);
-      if (!alvo) return;
-      alvo.scrollIntoView({ behavior: "smooth", block: "start" });
-      alvo.classList.add("crit-ref-highlight");
-      setTimeout(() => alvo.classList.remove("crit-ref-highlight"), 1600);
-    }, 50);
-  }
 }
 
 document.getElementById("btn-ver-criterios").addEventListener("click", () => abrirCriteriosReferencia());
@@ -434,8 +428,8 @@ function renderPainelSecoes() {
                 <tr>
                   <th rowspan="2">Cliente</th><th rowspan="2" class="col-ind">IND</th><th rowspan="2" class="col-mod">MOD</th>
                   <th rowspan="2" class="center">RAG<br>Geral</th><th rowspan="2" class="center">Score</th>
-                  ${PILAR_GRUPOS.map((g, i) => `<th colspan="${g.pilares.length}" class="th-categoria${i > 0 ? " divisor-categoria" : ""}">${esc(g.label)}</th>`).join("")}
-                  <th rowspan="2" class="col-am">AM</th><th rowspan="2">DM</th>
+                  ${PILAR_GRUPOS.map(g => `<th colspan="${g.pilares.length}" class="th-categoria divisor-categoria">${esc(g.label)}</th>`).join("")}
+                  <th rowspan="2" class="col-am divisor-categoria">AM</th><th rowspan="2">DM</th>
                 </tr>
                 <tr class="th-pilar-row">
                   ${PILAR_ORDEM.map(p => `
@@ -454,7 +448,7 @@ function renderPainelSecoes() {
                     ${PILAR_ORDEM.map(p => `
                       <td class="center${PILAR_INICIO_CATEGORIA.has(p) ? " divisor-categoria" : ""}"><button class="badge-rag ${c.pilares[p].toLowerCase()}" data-cliente-id="${c.id}" data-pilar="${p}">${c.pilares[p]}</button></td>
                     `).join("")}
-                    <td class="col-am">${c.am ? esc(c.am.nome) : "—"}</td>
+                    <td class="col-am divisor-categoria">${c.am ? esc(c.am.nome) : "—"}</td>
                     <td>${esc(dmsLabel(c.dms))}</td>
                   </tr>
                 `).join("")}
