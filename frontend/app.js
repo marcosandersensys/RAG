@@ -1115,7 +1115,6 @@ function renderModeloPontuacao() {
         <td>${esc(cat.label)}</td>
         <td><strong>${esc(PILAR_LABELS[p])}</strong></td>
         <td class="center">${pesoPct}%</td>
-        <td class="center"><button class="badge-rag g" style="cursor:default">G</button></td>
         <td class="center">100</td>
         <td class="center">${pesoPct}</td>
         <td>${esc(PILAR_DONO[p])}</td>
@@ -1127,7 +1126,7 @@ function renderModeloPontuacao() {
     <tr class="modelo-pontuacao-total">
       <td colspan="2">TOTAL</td>
       <td class="center">100%</td>
-      <td></td><td></td>
+      <td></td>
       <td class="center">100</td>
       <td></td>
     </tr>
@@ -1135,17 +1134,13 @@ function renderModeloPontuacao() {
 
   document.getElementById("modelo-pontuacao-regras").innerHTML = `
     <p><strong>Score Consolidado (0-100):</strong> 100 &nbsp;·&nbsp; <strong>RAG Geral do Cliente:</strong> <button class="badge-rag g" style="cursor:default">G</button></p>
+    <p style="margin-top:2px;font-size:11px;color:var(--text-muted)">Ponderação por status: G = 100% · A = 50% · R = 0%</p>
     <p style="margin-top:10px"><strong>Regras de consolidação:</strong></p>
     <ol style="margin-left:18px">
       <li>Qualquer pilar em R ⇒ RAG geral = R (override automático, sem exceção).</li>
       <li>Sem pilares em R: Score ≥ 85 ⇒ G · Score entre 50 e 84,9 ⇒ A · Score &lt; 50 ⇒ R.</li>
       <li>Pesos e faixas de corte (85 / 50) são parametrizáveis — ajustar conforme maturidade da carteira.</li>
     </ol>
-    <table style="margin-top:12px;border-collapse:collapse;width:160px">
-      <tr><td style="padding:4px 12px 4px 0"><button class="badge-rag g" style="cursor:default">G</button></td><td style="padding:4px 0">100%</td></tr>
-      <tr><td style="padding:4px 12px 4px 0"><button class="badge-rag a" style="cursor:default">A</button></td><td style="padding:4px 0">50%</td></tr>
-      <tr><td style="padding:4px 12px 4px 0"><button class="badge-rag r" style="cursor:default">R</button></td><td style="padding:4px 0">0%</td></tr>
-    </table>
   `;
 }
 
