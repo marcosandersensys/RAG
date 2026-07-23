@@ -310,6 +310,7 @@ function renderResumoCards(resumo) {
 // ---------- Critérios de referência (help contextual no Painel) ----------
 
 async function abrirCriteriosReferencia(pilarFoco) {
+  document.getElementById("criterios-ref-titulo").textContent = "Critérios de Referência (G/A/R)";
   const criterios = await api("/api/criterios");
   const grupos = new Map();
   criterios.forEach(c => {
@@ -427,7 +428,7 @@ function renderPainelSecoes() {
               <thead>
                 <tr>
                   <th rowspan="2">Cliente</th><th rowspan="2" class="col-ind">IND</th><th rowspan="2" class="col-mod">MOD</th>
-                  <th rowspan="2" class="center">RAG<br>Geral</th><th rowspan="2" class="center">Score</th>
+                  <th rowspan="2" class="center">RAG<br>Geral <button type="button" class="th-help-rag-geral" title="Como o RAG Geral é calculado">?</button></th><th rowspan="2" class="center">Score</th>
                   ${PILAR_GRUPOS.map(g => `<th colspan="${g.pilares.length}" class="th-categoria divisor-categoria">${esc(g.label)}</th>`).join("")}
                   <th rowspan="2" class="col-am divisor-categoria">AM</th><th rowspan="2">DM</th>
                 </tr>
@@ -468,6 +469,9 @@ function renderPainelSecoes() {
   });
   container.querySelectorAll(".th-help").forEach(btn => {
     btn.addEventListener("click", (e) => { e.stopPropagation(); abrirCriteriosReferencia(btn.dataset.pilarHelp); });
+  });
+  container.querySelectorAll(".th-help-rag-geral").forEach(btn => {
+    btn.addEventListener("click", (e) => { e.stopPropagation(); abrirRagGeralInfo(); });
   });
 }
 
@@ -1111,6 +1115,24 @@ function renderOrgPorPessoaHtml() {
 
 // ---------- Modelo de Pontuação (referência estática) ----------
 
+function regrasConsolidacaoHtml() {
+  return `
+    <p style="font-size:12px;color:var(--text-muted)">Ponderação por status: G = 100% · A = 50% · R = 0%</p>
+    <p style="margin-top:10px"><strong>Regras de consolidação:</strong></p>
+    <ol style="margin-left:18px">
+      <li>Qualquer pilar em R ⇒ RAG geral = R (override automático, sem exceção).</li>
+      <li>Sem pilares em R: Score ≥ 85 ⇒ G · Score entre 50 e 84,9 ⇒ A · Score &lt; 50 ⇒ R.</li>
+      <li>Pesos e faixas de corte (85 / 50) são parametrizáveis — ajustar conforme maturidade da carteira.</li>
+    </ol>
+  `;
+}
+
+function abrirRagGeralInfo() {
+  document.getElementById("criterios-ref-titulo").textContent = "RAG Geral — Regras de Consolidação";
+  document.getElementById("criterios-ref-corpo").innerHTML = regrasConsolidacaoHtml();
+  openModal("modal-criterios-ref");
+}
+
 function renderModeloPontuacao() {
   const linhas = PILAR_GRUPOS.flatMap(cat => cat.pilares.map(p => {
     const pesoPct = Math.round(PILAR_PESO[p] * 100);
@@ -1136,16 +1158,7 @@ function renderModeloPontuacao() {
     </tr>
   `;
 
-  document.getElementById("modelo-pontuacao-regras").innerHTML = `
-    <p><strong>Score Consolidado (0-100):</strong> 100 &nbsp;·&nbsp; <strong>RAG Geral do Cliente:</strong> <button class="badge-rag g" style="cursor:default">G</button></p>
-    <p style="margin-top:2px;font-size:11px;color:var(--text-muted)">Ponderação por status: G = 100% · A = 50% · R = 0%</p>
-    <p style="margin-top:10px"><strong>Regras de consolidação:</strong></p>
-    <ol style="margin-left:18px">
-      <li>Qualquer pilar em R ⇒ RAG geral = R (override automático, sem exceção).</li>
-      <li>Sem pilares em R: Score ≥ 85 ⇒ G · Score entre 50 e 84,9 ⇒ A · Score &lt; 50 ⇒ R.</li>
-      <li>Pesos e faixas de corte (85 / 50) são parametrizáveis — ajustar conforme maturidade da carteira.</li>
-    </ol>
-  `;
+  document.getElementById("modelo-pontuacao-regras").innerHTML = regrasConsolidacaoHtml();
 }
 
 // ---------- CRITÉRIOS tab ----------

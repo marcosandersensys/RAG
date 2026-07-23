@@ -118,7 +118,7 @@ th.col-a{color:#FCD34D}
 th.col-r{color:#FCA5A5}
 
 /* Table-header inline help ("?") */
-.th-help{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.12);color:#fff;font-size:9px;font-weight:700;cursor:pointer;vertical-align:middle;margin-left:2px;line-height:1;padding:0}
+.th-help,.th-help-rag-geral{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.12);color:#fff;font-size:9px;font-weight:700;cursor:pointer;vertical-align:middle;margin-left:2px;line-height:1;padding:0}
 .th-help:hover{background:rgba(255,255,255,.28)}
 
 /* Overdue risk/issue row */
@@ -136,10 +136,10 @@ tr.risco-atrasado:hover td{background:rgba(220,38,38,.09)}
 .badge-rag.r{background:var(--destructive)}
 
 /* RAG geral do cliente (derivado, não clicável) */
-.badge-geral{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;padding:0 8px;border-radius:var(--radius-pill);font-size:11px;font-weight:700;color:#fff;font-family:var(--font-body)}
-.badge-geral.g{background:var(--success)}
-.badge-geral.a{background:var(--warning)}
-.badge-geral.r{background:var(--destructive)}
+.badge-geral{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;padding:0 8px;border-radius:var(--radius-pill);font-size:11px;font-weight:800;background:#fff;border:2px solid transparent;font-family:var(--font-body)}
+.badge-geral.g{border-color:var(--success);color:var(--success)}
+.badge-geral.a{border-color:var(--warning);color:var(--warning)}
+.badge-geral.r{border-color:var(--destructive);color:var(--destructive)}
 
 /* Cabeçalho de categoria (agrupa colunas de pilar) */
 .th-categoria{text-align:center;font-size:13px;font-weight:800;letter-spacing:.05em}
