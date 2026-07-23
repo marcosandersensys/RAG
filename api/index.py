@@ -726,6 +726,8 @@ def detalhe_cliente(cliente_id: int, pessoa: dict = Depends(get_current_pessoa))
     relacoes = _cliente_relacoes(conn, cliente_id)
     conn.close()
 
+    pilares_status = {p: status_map.get(p, {}).get("status", "G") for p in PILARES}
+
     return {
         "id": c["id"],
         "nome": c["nome"],
@@ -734,9 +736,10 @@ def detalhe_cliente(cliente_id: int, pessoa: dict = Depends(get_current_pessoa))
         "bu_director": relacoes["bu_director"],
         "am": relacoes["am"],
         "dms": relacoes["dms"],
-        "pilares": {p: status_map.get(p, {}).get("status", "G") for p in PILARES},
+        "pilares": pilares_status,
         "historico": [dict(h) for h in historico],
         "riscos": [dict(r) for r in riscos],
+        **calcular_score(pilares_status),
     }
 
 

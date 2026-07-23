@@ -588,12 +588,19 @@ document.getElementById("ms-salvar").addEventListener("click", async () => {
 
 // ---------- modal: detalhe do cliente ----------
 
-function renderClienteTimeline(historico) {
+function renderClienteTimeline(historico, ragGeral) {
   const porPilar = new Map();
   PILAR_ORDEM.forEach(p => porPilar.set(p, []));
   historico.forEach(h => { if (porPilar.has(h.pilar)) porPilar.get(h.pilar).push(h); });
   // historico chega em ordem DESC (mais recente primeiro); inverte p/ ordem cronológica
   porPilar.forEach(arr => arr.reverse());
+
+  const linhaGeral = `
+    <div class="pilar-tl-row">
+      <div class="pilar-tl-label" title="RAG Geral">GERAL</div>
+      <div class="pilar-tl-track"><span class="badge-geral ${ragGeral.toLowerCase()}">${ragGeral}</span></div>
+    </div>
+  `;
 
   const pontos = [];
   const linhas = PILAR_ORDEM.map(p => {
@@ -601,7 +608,7 @@ function renderClienteTimeline(historico) {
     if (!entradas.length) {
       return `
         <div class="pilar-tl-row">
-          <div class="pilar-tl-label">${PILAR_LABELS[p]}</div>
+          <div class="pilar-tl-label" title="${esc(PILAR_LABELS[p])}">${PILAR_LABELS_CURTO[p]}</div>
           <div class="pilar-tl-track"><span class="pilar-tl-empty">Sem histórico</span></div>
         </div>
       `;
@@ -620,13 +627,13 @@ function renderClienteTimeline(historico) {
     }).join("");
     return `
       <div class="pilar-tl-row">
-        <div class="pilar-tl-label">${PILAR_LABELS[p]}</div>
+        <div class="pilar-tl-label" title="${esc(PILAR_LABELS[p])}">${PILAR_LABELS_CURTO[p]}</div>
         <div class="pilar-tl-track">${itens}</div>
       </div>
     `;
   }).join("");
 
-  document.getElementById("mc-timeline").innerHTML = linhas;
+  document.getElementById("mc-timeline").innerHTML = linhaGeral + linhas;
   const detalheEl = document.getElementById("mc-timeline-detalhe");
   detalheEl.textContent = "Clique em um ponto da linha do tempo para ver os detalhes daquela medição.";
 
@@ -646,16 +653,19 @@ function renderClienteTimeline(historico) {
 
 async function openClienteModal(clienteId) {
   const detalhe = await api(`/api/clientes/${clienteId}`);
-  document.getElementById("mc-titulo").textContent = `${detalhe.nome} · ${detalhe.industry_code}`;
+  document.getElementById("mc-titulo").innerHTML = `
+    ${esc(detalhe.nome)} · ${esc(detalhe.industry_code)}
+    <span class="badge-geral ${detalhe.rag_geral.toLowerCase()}" style="margin-left:8px;vertical-align:middle" title="${esc((detalhe.alertas || []).join(" · "))}">${detalhe.rag_geral}</span>
+  `;
 
   document.getElementById("mc-pilares").innerHTML = PILAR_ORDEM.map(p => `
     <div class="pilar-mini">
-      <div class="lbl">${PILAR_LABELS[p]}</div>
+      <div class="lbl" title="${esc(PILAR_LABELS[p])}">${PILAR_LABELS_CURTO[p]}</div>
       <span class="badge-rag ${detalhe.pilares[p].toLowerCase()}">${detalhe.pilares[p]}</span>
     </div>
   `).join("");
 
-  renderClienteTimeline(detalhe.historico);
+  renderClienteTimeline(detalhe.historico, detalhe.rag_geral);
 
   document.getElementById("mc-equipe").innerHTML = `
     <div class="historico-item"><span><strong>BU Director</strong></span><span class="meta">${detalhe.bu_director ? esc(detalhe.bu_director.nome) : "—"}</span></div>
