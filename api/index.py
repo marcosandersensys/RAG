@@ -28,8 +28,37 @@ from pydantic import BaseModel
 DIGEST_EMAIL_TO = "marcos.andersen@sysmanager.com.br"
 RESEND_API_URL = "https://api.resend.com/emails"
 
-PILARES = ["prazo", "faturamento", "margem", "escopo", "rh", "csat", "contrato"]
+PILARES = ["faturamento", "receita", "margem", "prazo", "escopo", "rh", "csat", "contrato"]
 PAPEIS = ("bu_director", "am", "dm", "admin")
+
+CATEGORIAS = [
+    {"key": "financeiro", "label": "Financeiro", "pilares": ["faturamento", "receita", "margem"]},
+    {"key": "execucao", "label": "Execução/Entrega", "pilares": ["prazo", "escopo"]},
+    {"key": "pessoas", "label": "Pessoas", "pilares": ["rh"]},
+    {"key": "relacionamento", "label": "Relacionamento & Contrato", "pilares": ["csat", "contrato"]},
+]
+
+PILAR_PESO = {
+    "faturamento": 0.10, "receita": 0.15, "margem": 0.15,
+    "prazo": 0.10, "escopo": 0.10,
+    "rh": 0.10,
+    "csat": 0.20, "contrato": 0.10,
+}
+
+PILAR_DONO = {
+    "faturamento": "Financeiro",
+    "receita": "Comercial/AM + Delivery Lead",
+    "margem": "Financeiro + Delivery Lead",
+    "prazo": "Delivery/PM",
+    "escopo": "Delivery/PM",
+    "rh": "RH + Delivery Lead",
+    "csat": "AM/CS",
+    "contrato": "Comercial + Delivery Lead",
+}
+
+PONTUACAO_STATUS = {"G": 100, "A": 50, "R": 0}
+SCORE_CORTE_G = 85
+SCORE_CORTE_A = 50
 
 SENHA_PADRAO = "SysManager@2026"
 SESSAO_DIAS = 7
@@ -185,9 +214,10 @@ def hoje_str() -> str:
 
 
 PILAR_LABELS = {
-    "prazo": "Prazo",
     "faturamento": "Faturamento",
+    "receita": "Receita",
     "margem": "Margem",
+    "prazo": "Prazo",
     "escopo": "Escopo",
     "rh": "RH",
     "csat": "CSAT",
@@ -470,6 +500,38 @@ def _all_dms(conn) -> dict:
     return result
 
 
+# ---------- Scoring (RAG geral / score consolidado) ----------
+
+def _calcular_alertas(status_map: dict) -> list:
+    alertas = []
+    if status_map.get("receita") == "R":
+        alertas.append("Revisão obrigatória de Margem e Faturamento no próximo ciclo")
+    for cat in CATEGORIAS:
+        if sum(1 for p in cat["pilares"] if status_map.get(p) == "A") >= 2:
+            alertas.append(f"Degradação sistêmica da categoria {cat['label']}")
+    if status_map.get("rh") == "R" and status_map.get("escopo") in ("A", "R"):
+        alertas.append("Alerta cruzado: perda de pessoa-chave + desvio de execução")
+    return alertas
+
+
+def calcular_score(status_map: dict) -> dict:
+    score = sum(PILAR_PESO[p] * PONTUACAO_STATUS[status_map.get(p, "G")] for p in PILARES)
+    tem_r = any(status_map.get(p, "G") == "R" for p in PILARES)
+    if tem_r:
+        rag_geral = "R"
+    elif score >= SCORE_CORTE_G:
+        rag_geral = "G"
+    elif score >= SCORE_CORTE_A:
+        rag_geral = "A"
+    else:
+        rag_geral = "R"
+    return {
+        "score_consolidado": round(score, 1),
+        "rag_geral": rag_geral,
+        "alertas": _calcular_alertas(status_map),
+    }
+
+
 # ---------- Auditoria ----------
 
 def _diff_campos(antigo: dict, novos: dict) -> str:
@@ -622,6 +684,7 @@ def listar_clientes(pessoa: dict = Depends(get_current_pessoa)):
         modificado = max(
             (v["atualizado_em"] for v in status_map.values()), default=None
         )
+        pilares_status = {p: status_map.get(p, {}).get("status", "G") for p in PILARES}
         resultado.append({
             "id": c["cliente_id"],
             "nome": c["cliente_nome"],
@@ -632,9 +695,8 @@ def listar_clientes(pessoa: dict = Depends(get_current_pessoa)):
             "dms": dms_por_cliente.get(c["cliente_id"], []),
             "modificado": modificado,
             "riscos_abertos": riscos_por_cliente.get(c["cliente_id"], 0),
-            "pilares": {
-                p: status_map.get(p, {}).get("status", "G") for p in PILARES
-            },
+            "pilares": pilares_status,
+            **calcular_score(pilares_status),
         })
     return resultado
 
@@ -1103,13 +1165,10 @@ def resumo(pessoa: dict = Depends(get_current_pessoa)):
     clientes_criticos = 0
     for c in clientes:
         status_map = status_por_cliente.get(c["id"], {})
-        tem_r = False
+        pilares_status = {p: status_map.get(p, {}).get("status", "G") for p in PILARES}
         for p in PILARES:
-            s = status_map.get(p, {}).get("status", "G")
-            contagem[p][s] += 1
-            if s == "R":
-                tem_r = True
-        if tem_r:
+            contagem[p][pilares_status[p]] += 1
+        if calcular_score(pilares_status)["rag_geral"] == "R":
             clientes_criticos += 1
 
     return {

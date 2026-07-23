@@ -1,5 +1,12 @@
-const PILAR_ORDEM = ["prazo", "faturamento", "margem", "escopo", "rh", "csat", "contrato"];
-const PILAR_LABELS = { prazo: "Prazo", faturamento: "Faturamento", margem: "Margem", escopo: "Escopo", rh: "RH", csat: "CSAT", contrato: "Contrato" };
+const PILAR_GRUPOS = [
+  { label: "Financeiro", pilares: ["faturamento", "receita", "margem"] },
+  { label: "Execução/Entrega", pilares: ["prazo", "escopo"] },
+  { label: "Pessoas", pilares: ["rh"] },
+  { label: "Relacionamento & Contrato", pilares: ["csat", "contrato"] },
+];
+const PILAR_ORDEM = PILAR_GRUPOS.flatMap(g => g.pilares);
+const PILAR_LABELS = { faturamento: "Faturamento", receita: "Receita", margem: "Margem", prazo: "Prazo", escopo: "Escopo", rh: "RH", csat: "CSAT", contrato: "Contrato" };
+const PILAR_CATEGORIA = Object.fromEntries(PILAR_GRUPOS.flatMap(g => g.pilares.map(p => [p, g.label])));
 const PAPEL_LABELS = { bu_director: "BU Director", am: "AM", dm: "DM", admin: "Admin" };
 const DIRECTOR_COLORS = ["var(--sys-magenta)", "var(--sys-blue)", "var(--sys-purple)"];
 
@@ -296,8 +303,7 @@ async function abrirCriteriosReferencia(pilarFoco) {
     porLinha.get(c.linha)[c.status] = c.descricao;
   });
 
-  const corpo = document.getElementById("criterios-ref-corpo");
-  corpo.innerHTML = PILAR_ORDEM.map(p => {
+  const pilarBlock = p => {
     const porLinha = grupos.get(p);
     if (!porLinha || !porLinha.size) return "";
     return `
@@ -313,6 +319,13 @@ async function abrirCriteriosReferencia(pilarFoco) {
         `).join("")}
       </div>
     `;
+  };
+
+  const corpo = document.getElementById("criterios-ref-corpo");
+  corpo.innerHTML = PILAR_GRUPOS.map(cat => {
+    const blocos = cat.pilares.map(pilarBlock).join("");
+    if (!blocos.trim()) return "";
+    return `<h3 class="crit-ref-categoria">${esc(cat.label)}</h3>${blocos}`;
   }).join("");
 
   openModal("modal-criterios-ref");
@@ -403,7 +416,12 @@ function renderPainelSecoes() {
             <table>
               <thead>
                 <tr>
-                  <th>Cliente</th><th>Industry</th><th>AM</th><th>DM(s)</th><th>Modificado</th>
+                  <th rowspan="2">Cliente</th><th rowspan="2">Industry</th><th rowspan="2">AM</th>
+                  <th rowspan="2">DM(s)</th><th rowspan="2">Modificado</th>
+                  <th rowspan="2">RAG Geral</th><th rowspan="2">Score</th>
+                  ${PILAR_GRUPOS.map(g => `<th colspan="${g.pilares.length}" class="th-categoria">${esc(g.label)}</th>`).join("")}
+                </tr>
+                <tr>
                   ${PILAR_ORDEM.map(p => `
                     <th>${PILAR_LABELS[p]} <button type="button" class="th-help" data-pilar-help="${p}" title="Ver critérios de ${PILAR_LABELS[p]}">?</button></th>
                   `).join("")}
@@ -417,6 +435,8 @@ function renderPainelSecoes() {
                     <td>${c.am ? esc(c.am.nome) : "—"}</td>
                     <td>${esc(dmsLabel(c.dms))}</td>
                     <td>${fmtData(c.modificado)}</td>
+                    <td><span class="badge-geral ${c.rag_geral.toLowerCase()}" title="${esc((c.alertas || []).join(" · "))}">${c.rag_geral}</span></td>
+                    <td>${c.score_consolidado}</td>
                     ${PILAR_ORDEM.map(p => `
                       <td><button class="badge-rag ${c.pilares[p].toLowerCase()}" data-cliente-id="${c.id}" data-pilar="${p}">${c.pilares[p]}</button></td>
                     `).join("")}
@@ -1085,8 +1105,7 @@ function renderCriterios() {
     grupos.get(key).itens[c.status] = c;
   });
 
-  const tbody = document.getElementById("criterios-tbody");
-  tbody.innerHTML = [...grupos.values()].map(g => `
+  const linhaHtml = g => `
     <tr>
       <td><strong>${PILAR_LABELS[g.pilar] || esc(g.pilar)}</strong></td>
       <td>${esc(g.linha)}</td>
@@ -1096,7 +1115,16 @@ function renderCriterios() {
         return `<td class="criterio-cell" contenteditable="true" data-criterio-id="${item.id}">${esc(item.descricao)}</td>`;
       }).join("")}
     </tr>
-  `).join("");
+  `;
+
+  const todosGrupos = [...grupos.values()];
+  const tbody = document.getElementById("criterios-tbody");
+  tbody.innerHTML = PILAR_GRUPOS.map(cat => {
+    const gruposCategoria = todosGrupos.filter(g => cat.pilares.includes(g.pilar));
+    if (!gruposCategoria.length) return "";
+    return `<tr class="criterios-categoria-row"><td colspan="5"><strong>${esc(cat.label)}</strong></td></tr>`
+      + gruposCategoria.map(linhaHtml).join("");
+  }).join("");
 
   tbody.querySelectorAll(".criterio-cell").forEach(td => {
     let original = td.textContent;
@@ -1371,6 +1399,9 @@ document.getElementById("btn-export-painel-excel").addEventListener("click", () 
       am: c.am ? c.am.nome : "",
       dms: dmsLabel(c.dms),
       modificado: fmtData(c.modificado),
+      rag_geral: c.rag_geral,
+      score_consolidado: c.score_consolidado,
+      alertas: (c.alertas || []).join("; "),
     };
     PILAR_ORDEM.forEach(p => { linha[p] = c.pilares[p]; });
     return linha;
@@ -1382,7 +1413,10 @@ document.getElementById("btn-export-painel-excel").addEventListener("click", () 
     { header: "AM", key: "am", width: 20 },
     { header: "DM(s)", key: "dms", width: 28 },
     { header: "Modificado", key: "modificado", width: 14 },
-    ...PILAR_ORDEM.map(p => ({ header: PILAR_LABELS[p], key: p, width: 10 })),
+    { header: "RAG Geral", key: "rag_geral", width: 10 },
+    { header: "Score Consolidado", key: "score_consolidado", width: 12 },
+    ...PILAR_ORDEM.map(p => ({ header: `${PILAR_CATEGORIA[p]} — ${PILAR_LABELS[p]}`, key: p, width: 10 })),
+    { header: "Alertas", key: "alertas", width: 40 },
   ], "rag-status-painel.xlsx", "Painel RAG Status");
 });
 
@@ -1427,7 +1461,14 @@ document.getElementById("btn-export-painel-pdf").addEventListener("click", () =>
     return `
       <div class="print-section-title">${esc(dir.nome)} — BU Director</div>
       <table>
-        <thead><tr><th>Cliente</th><th>Industry</th><th>AM</th><th>DM(s)</th>${PILAR_ORDEM.map(p => `<th>${PILAR_LABELS[p]}</th>`).join("")}</tr></thead>
+        <thead>
+          <tr>
+            <th rowspan="2">Cliente</th><th rowspan="2">Industry</th><th rowspan="2">AM</th><th rowspan="2">DM(s)</th>
+            <th rowspan="2">RAG Geral</th><th rowspan="2">Score</th>
+            ${PILAR_GRUPOS.map(g => `<th colspan="${g.pilares.length}">${esc(g.label)}</th>`).join("")}
+          </tr>
+          <tr>${PILAR_ORDEM.map(p => `<th>${PILAR_LABELS[p]}</th>`).join("")}</tr>
+        </thead>
         <tbody>
           ${clientesDoDir.map(c => `
             <tr>
@@ -1435,6 +1476,8 @@ document.getElementById("btn-export-painel-pdf").addEventListener("click", () =>
               <td>${esc(c.industry_code)}</td>
               <td>${c.am ? esc(c.am.nome) : "—"}</td>
               <td>${esc(dmsLabel(c.dms))}</td>
+              <td>${c.rag_geral}</td>
+              <td>${c.score_consolidado}</td>
               ${PILAR_ORDEM.map(p => `<td>${c.pilares[p]}</td>`).join("")}
             </tr>
           `).join("")}

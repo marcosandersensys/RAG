@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 import psycopg2
 import psycopg2.extras
 
-PILARES = ["prazo", "faturamento", "margem", "escopo", "rh", "csat", "contrato"]
+PILARES = ["faturamento", "receita", "margem", "prazo", "escopo", "rh", "csat", "contrato"]
 
 
 def current_week_monday():
