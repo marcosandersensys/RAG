@@ -40,7 +40,7 @@ body{font-family:var(--font-body);background:var(--bg-page);color:var(--text-bod
 h1,h2,h3,h4{font-family:var(--font-heading);color:var(--text-primary);letter-spacing:-0.02em}
 
 html,body{overflow-x:hidden;width:100%}
-.shell{max-width:1320px;margin:0 auto;padding:0 32px 48px}
+.shell{max-width:1600px;margin:0 auto;padding:0 32px 48px}
 
 /* TOPBAR */
 .topbar{padding:20px 0 0;border-bottom:1px solid var(--border-subtle);margin-bottom:20px}
