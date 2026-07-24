@@ -379,13 +379,121 @@ exigência de Risco/Problema vinculado a um status não-verde (§7.1).
 - `GET /api/clientes` — cada cliente da lista inclui os três campos (spread
   de `calcular_score(pilares_status)`).
 - `GET /api/clientes/{id}` — idem, no payload de detalhe.
-- `GET /api/dashboard/resumo` — não devolve os três campos diretamente, mas o
-  contador `clientes_criticos` agora é calculado contando quantos clientes têm
-  `calcular_score(pilares_status)["rag_geral"] == "R"` — ou seja, reflete tanto
+- `GET /api/dashboard/resumo` — não devolve os três campos diretamente, mas os
+  contadores `clientes_rag_r`/`clientes_rag_a` (§4.10, §5) são calculados
+  contando quantos clientes têm `calcular_score(pilares_status)["rag_geral"]`
+  igual a `"R"`/`"A"` respectivamente — ou seja, `clientes_rag_r` reflete tanto
   clientes com algum pilar vermelho quanto clientes sem pilar vermelho, mas com
-  score consolidado abaixo de 50 (múltiplos pilares em `A`). O label da UI
-  ("Clientes com pilar vermelho") é uma simplificação — o critério real é o
-  RAG Geral, não apenas a presença literal de um pilar `R`.
+  score consolidado abaixo de 50 (múltiplos pilares em `A`). Os labels da UI
+  ("Clientes RAG Geral = R"/"= A") já refletem esse critério — o RAG Geral, não
+  apenas a presença literal de um pilar `R`.
+
+### 4.10 `metricas_diarias`
+
+Snapshot diário das métricas agregadas do Painel, usado para calcular a
+variação semana-a-semana (WoW) exibida nos cards de resumo (§7.3).
+
+| Coluna | Tipo | Observação |
+|---|---|---|
+| `data` | `TEXT PRIMARY KEY` | `YYYY-MM-DD` |
+| `clientes_rag_r` | `INTEGER NOT NULL` | nº de clientes ativos com `rag_geral == "R"` naquele dia |
+| `clientes_rag_a` | `INTEGER NOT NULL` | nº de clientes ativos com `rag_geral == "A"` naquele dia |
+| `riscos_abertos` | `INTEGER NOT NULL` | riscos/problemas com `status != 'fechado'` |
+| `riscos_atrasados` | `INTEGER NOT NULL` | idem, com `data_alvo < hoje` |
+| `criado_em` | `TEXT NOT NULL` | timestamp ISO do cálculo |
+
+Não existe um cron dedicado para essa tabela — ela é populada **de carona** no
+mesmo `GET /api/cron/resumo-diario` que já envia o email de resumo diário
+(§5.1): ao final da rota, `_metricas_atuais(conn)` (sem filtro de cliente,
+visão irrestrita) calcula os quatro contadores do dia corrente e grava via
+`INSERT ... ON CONFLICT (data) DO UPDATE` (upsert idempotente — reexecuções no
+mesmo dia sobrescrevem a linha em vez de duplicar).
+
+**Cálculo do WoW** — em `GET /api/dashboard/resumo` (§5): busca-se a linha de
+`metricas_diarias` com `data = hoje - 7 dias` e compara-se contra as métricas
+atuais (recalculadas ao vivo, não lidas da tabela) via `_variacao_pct(atual,
+anterior)`, que devolve `None` quando não há linha de 7 dias atrás (ainda sem
+histórico suficiente) ou quando `anterior == 0 and atual == 0`, e `100.0`
+quando `anterior == 0` e `atual > 0`.
+
+Essa comparação **só é feita para pessoas com visão irrestrita**
+(`_clientes_visiveis_ids()` retornando `None` — admin ou `acesso_full=1`): o
+snapshot em `metricas_diarias` é uma única foto global por dia, sem
+granularidade por cliente, então não há como recortá-lo por AM/DM cujo
+conjunto de clientes visíveis é parcial. Para esses papéis, `GET
+/api/dashboard/resumo` sempre devolve `"wow": null`.
+
+`scripts/bootstrap_metrica_hoje.py` é um script one-off para popular a linha
+do dia corrente manualmente (mesmo cálculo de `rag_geral`, reimplementado
+localmente para não depender de `api/index.py`), sem esperar o cron das
+06:00 e sem disparar o envio do email de resumo — usado para antecipar em até
+7 dias o início da comparação WoW. Idempotente (mesmo upsert por `data`).
+
+### 4.11 `dre_resumo`
+
+Snapshot recorrente do relatório Power BI "DRE Gerencial" — resumo
+consolidado da empresa (Total / Licenciamento / Serviços), um par
+planejado/realizado por linha de DRE e competência.
+
+| Coluna | Tipo | Observação |
+|---|---|---|
+| `id` | `SERIAL PK` | |
+| `escopo` | `TEXT NOT NULL` | `total` \| `licenciamento` \| `servicos` |
+| `linha_dre` | `TEXT NOT NULL` | nome exato da linha do DRE (ex: "Receita Bruta", "Margem Bruta $", "EBITDA $", "Lucro Líquido $") |
+| `competencia` | `TEXT NOT NULL` | `YYYY-MM` |
+| `valor_planejado` | `NUMERIC` | nullable — `NULL` para meses futuros ainda sem dado no Power BI |
+| `valor_realizado` | `NUMERIC` | nullable, mesma regra |
+| `atualizado_em` | `TEXT NOT NULL` | timestamp ISO da carga |
+| Unicidade | `UNIQUE (escopo, linha_dre, competencia)` | chave natural da linha |
+
+### 4.12 `dre_cliente`
+
+Mesmo snapshot do Power BI, quebrado por cliente (dimensão "Cliente
+Agrupado" do relatório), limitado às 7 métricas: Receita Bruta, Receita
+Líquida, Custo de Pessoal, Custo de Licença, Outros Custos, Margem Bruta $,
+Margem Bruta %.
+
+| Coluna | Tipo | Observação |
+|---|---|---|
+| `id` | `SERIAL PK` | |
+| `cliente_nome` | `TEXT NOT NULL` | valor do filtro "Cliente Agrupado" no Power BI — não é FK para `clientes.nome` e nem sempre coincide com ele (ex: "Petrobras" no Power BI agrega os 3 contratos separados do RAG Status) |
+| `metrica` | `TEXT NOT NULL` | uma das 7 métricas acima |
+| `competencia` | `TEXT NOT NULL` | `YYYY-MM` |
+| `valor_planejado` | `NUMERIC` | nullable |
+| `valor_realizado` | `NUMERIC` | nullable |
+| `atualizado_em` | `TEXT NOT NULL` | timestamp ISO da carga |
+| Unicidade | `UNIQUE (cliente_nome, metrica, competencia)` | chave natural da linha |
+
+**Nenhum endpoint de `api/index.py` lê `dre_resumo`/`dre_cliente` hoje** —
+ambas existem apenas como destino de carga do processo abaixo; a aplicação
+em si não expõe/consome esses dados ainda.
+
+**Como essas tabelas são alimentadas**: não pela aplicação rodando em
+produção, e sim por um processo manual, com humano no loop, composto por
+`scripts/dre_refresh.py` (CLI standalone, mesmo padrão dos scripts de
+manutenção do §8) e pela Claude Skill `atualizar-dre`
+(`.claude/skills/atualizar-dre/SKILL.md`). O motivo é que a extração dos
+dados do Power BI exige uma sessão de navegador com SSO Microsoft já
+autenticada pelo usuário — não automatizável sem interface (headless) —
+então quem dirige a extração ao vivo é o Claude operando o navegador já
+logado do usuário (`mcp__claude-in-chrome__*`); nenhuma credencial passa
+pelo Claude em momento algum.
+
+`scripts/dre_refresh.py` expõe 4 subcomandos:
+
+| Subcomando | Função |
+|---|---|
+| `backup` | Cria `dre_resumo_backup_<suffix>`/`dre_cliente_backup_<suffix>` (cópia integral via `CREATE TABLE ... AS SELECT *`) e imprime o `BACKUP_SUFFIX` gerado |
+| `load --mes-inicio --mes-fim --cliente --input` | Apaga as linhas de `dre_resumo`/`dre_cliente` dentro do escopo (competências do período × cliente, ou todas se `--cliente TODOS`) e insere/atualiza (upsert) as linhas do JSON de entrada (`{resumo:[...], cliente:[...]}`) |
+| `drop-backup --suffix` | Remove as tabelas de backup daquele suffix |
+| `restore-backup --suffix` | Restaura `dre_resumo`/`dre_cliente` (`TRUNCATE` + `INSERT ... SELECT *`) a partir do backup daquele suffix — usado se `load` falhar no meio |
+
+O runbook completo (perguntar período/cliente, extrair do Power BI com
+capturas de tela e validação de rótulo, montar o JSON, decidir
+planejado=realizado apenas na primeira carga de meses já fechados, perguntar
+sobre manter/apagar o backup ao final) vive inteiramente na skill
+`atualizar-dre` — o script em si só executa a mecânica de banco
+(backup/carga/restore), nunca a extração.
 
 ---
 
@@ -443,7 +551,7 @@ Todas as rotas sob `/api/*`. Autenticação via header
 | Método | Rota | Auth | Descrição |
 |---|---|---|---|
 | GET | `/api/auditoria` | admin/acesso_full | filtros `entidade`, `busca`, `limit` (máx. 500) |
-| GET | `/api/dashboard/resumo` | sessão | contagens agregadas (total clientes, críticos, riscos abertos/atrasados, contagem por pilar/status) — respeita RBAC; `clientes_criticos` usa `rag_geral` (§4.9) |
+| GET | `/api/dashboard/resumo` | sessão | contagens agregadas — respeita RBAC. Resposta: `total_clientes`, `clientes_rag_r`/`clientes_rag_a` (substituem o antigo `clientes_criticos`, contagem por `rag_geral`, §4.9), `riscos_abertos`, `riscos_atrasados`, `contagem_por_pilar` e `wow` (dict com a variação % de cada um dos 4 contadores — `null` por campo se não houver snapshot de 7 dias atrás, e `null` o dict inteiro para papéis com visão restrita — ver §4.10) |
 
 ### Cron / Email
 | Método | Rota | Auth | Descrição |
@@ -604,6 +712,27 @@ Sem bundler, sem transpilação, sem TypeScript — arquivos servidos como estã
 
 ### 7.3 Modelo de Pontuação e RAG Geral na UI
 
+**Cards de resumo do Painel (`#resumo-cards`)**: carregados por
+`loadPainel()` (junto com `/api/clientes` e `/api/pessoas`, em paralelo) e
+renderizados por `renderResumoCards(resumo)` a partir do payload de
+`GET /api/dashboard/resumo` (§4.10/§5) — 5 cards (`.summary-card`) em uma
+`.cards-row`, nesta ordem: **Clientes ativos** (`total_clientes`, sem
+variação — não existe "WoW de contagem de clientes ativos"), **Clientes RAG
+Geral = R** (`clientes_rag_r`), **Clientes RAG Geral = A** (`clientes_rag_a`),
+**Riscos/Problemas em aberto** (`riscos_abertos`) e **Riscos/Problemas
+atrasados** (`riscos_atrasados`). Os 4 últimos ganham destaque visual
+(`.alert`, número em vermelho) quando `> 0`, e cada um exibe abaixo do
+número o resultado de `wowHtml(wow.<campo>)`:
+- `wow.<campo> == null` (sem snapshot de 7 dias atrás, ou papel com visão
+  restrita — §4.10) → `"— vs sem. passada"` em cinza (`.wow-flat`);
+- `0` → `"= vs sem. passada"`, também `.wow-flat`;
+- diferente de zero → seta `▲`/`▼` + `{valor}% vs sem. passada`, colorida
+  como `.wow-up` (▲, vermelho — `--destructive`) ou `.wow-down` (▼, verde —
+  `--success`). A semântica de cor é invertida em relação a um KPI comum:
+  como as 4 métricas são "quanto pior, maior o número" (mais clientes em
+  R/A, mais riscos), uma alta (▲) é ruim (vermelho) e uma queda (▼) é boa
+  (verde).
+
 **Painel (`view-painel`, tabela principal)**:
 - Cabeçalho em 2 linhas (`<thead>` com duas `<tr>`): a primeira linha agrupa
   os pilares por categoria (`th-categoria`, `colspan` = nº de pilares daquela
@@ -693,6 +822,53 @@ completo (`viewBox="0 0 142 201"`), sem o texto/wordmark. Referenciado em
   A tabela impressa também reproduz o cabeçalho agrupado por categoria e as
   colunas de RAG Geral/Score.
 
+### 7.8 Aba "Ajuda"
+
+Aba da SPA (`view-ajuda`, botão `.tab[data-view="ajuda"]`) que renderiza o
+próprio `ESPECIFICACAO_FUNCIONAL.md` dentro da aplicação — **sem nenhuma
+dependência de backend** e sem duplicar conteúdo: reaproveita o arquivo
+markdown já existente como única fonte de verdade.
+
+- Carregamento sob demanda e uma única vez por sessão: o clique na aba
+  dispara `carregarAjuda()`, que primeiro checa a flag `ajudaCarregada`
+  (module-level, iniciada `false`) e sai imediatamente se já tiver carregado
+  — a mesma instância renderizada fica em `#ajuda-conteudo` para os cliques
+  seguintes, sem novo `fetch`.
+- `fetch("/ESPECIFICACAO_FUNCIONAL.md")` busca o markdown como arquivo
+  estático (ver roteamento abaixo), converte para HTML client-side via
+  `window.marked.parse(md)` (biblioteca `marked` v12.0.2, carregada via CDN
+  `cdnjs.cloudflare.com`, `<script>` em `index.html`) e injeta em
+  `#ajuda-conteudo.innerHTML`.
+- Toda `<table>` gerada pelo Markdown é envolvida em um `<div class="table-wrap">`
+  logo após o parse, para permitir rolagem horizontal em telas estreitas
+  (mesmo padrão de rolagem de tabelas largas do resto do produto, §7.5).
+- Falha de rede/HTTP (`!res.ok` ou exceção do `fetch`) é tratada com uma
+  mensagem de erro amigável em `#ajuda-conteudo` (`esc(e.message)`), sem
+  travar o restante da SPA.
+
+**Roteamento estático (`vercel.json`)** — a rota do arquivo precisa vir
+**antes** do catch-all do frontend, senão nunca seria alcançada:
+```json
+{
+  "builds": [
+    { "src": "api/index.py", "use": "@vercel/python" },
+    { "src": "frontend/**", "use": "@vercel/static" },
+    { "src": "ESPECIFICACAO_FUNCIONAL.md", "use": "@vercel/static" }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "api/index.py" },
+    { "src": "/ESPECIFICACAO_FUNCIONAL.md", "dest": "/ESPECIFICACAO_FUNCIONAL.md" },
+    { "src": "/(.*)", "dest": "/frontend/$1" }
+  ]
+}
+```
+A Vercel casa as regras de `routes` em ordem e para na primeira que bater —
+o catch-all `/(.*)` (que redireciona tudo para `/frontend/$1`) casaria
+`/ESPECIFICACAO_FUNCIONAL.md` também, resolvendo para
+`/frontend/ESPECIFICACAO_FUNCIONAL.md` (caminho onde o arquivo não existe).
+Por isso a rota específica do arquivo precisa estar declarada **antes** do
+catch-all — a mesma razão pela qual `/api/(.*)` também precede o catch-all.
+
 ---
 
 ## 8. Scripts de Manutenção (`scripts/`)
@@ -711,6 +887,7 @@ depender de imports cruzados com `api/index.py`.
 | `grant_acesso_full.py` | Concede `acesso_full=1` aos 3 BU Directors sem alterar `papel` |
 | `migrate_criterios_v3.py` | Idempotente: insere o novo pilar `receita` (3 linhas, G/A/R para a linha "Todas") na tabela `criterios` e renumera `ordem` de todas as linhas para refletir as 4 categorias atuais (Financeiro/Execução/Pessoas/Relacionamento); registra um evento `criterio/migrar` em `auditoria` |
 | `reset_dados.py` | Limpa todos os `riscos_issues` e `status_history`, redefine todo cliente/pilar (nos 8 pilares atuais) para `G`, registra o reset em `auditoria` |
+| `dre_refresh.py` | Não é idempotente/one-off como os demais — CLI recorrente (subcomandos `backup`/`load`/`drop-backup`/`restore-backup`, ver §4.11/§4.12) que sustenta o processo humano-no-loop de atualização do DRE Gerencial (Power BI), disparado pela skill `atualizar-dre` |
 
 Uso típico: `DATABASE_URL="postgres://...neon.tech/neondb?sslmode=require" python3 scripts/<nome>.py`
 

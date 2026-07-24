@@ -2,7 +2,7 @@
 
 **Sistema:** RAG Status — Gestão Executiva de Clientes/Contratos (SysManager)
 **Produção:** https://rag-status.vercel.app
-**Última atualização deste documento:** 2026-07-23
+**Última atualização deste documento:** 2026-07-24
 
 ---
 
@@ -335,8 +335,20 @@ auditoria, a evolução exata de qualquer pilar ao longo do tempo.
   troca ser concluída).
 
 ### 7.2 Painel (tela principal)
-- Cards de resumo: total de clientes ativos, clientes com pilar vermelho,
-  riscos/problemas em aberto, riscos/problemas atrasados.
+- Cinco cards de resumo no topo: **Clientes ativos** (total da carteira
+  visível), **Clientes RAG Geral = R** (quantos clientes estão hoje com o
+  semáforo geral no vermelho), **Clientes RAG Geral = A** (quantos estão em
+  atenção/âmbar), **Riscos/Problemas em aberto** e **Riscos/Problemas
+  atrasados**.
+- Em todos os cards, exceto "Clientes ativos", aparece uma pequena linha de
+  comparação logo abaixo do número, olhando para a semana anterior: uma
+  **seta vermelha para cima** com o percentual, se o número piorou; uma
+  **seta verde para baixo**, se melhorou; um sinal **"="**, se ficou igual;
+  ou um **traço "—"**, quando ainda não existe uma fotografia de uma semana
+  atrás para comparar. Essa comparação usa uma fotografia (snapshot) que o
+  próprio sistema tira automaticamente toda manhã — por isso, nos primeiros
+  dias após esse recurso entrar no ar, é normal alguns cards ainda
+  aparecerem sem comparação disponível.
 - Filtros: busca por cliente/AM/DM, BU Director, Industry Code, "apenas com
   pilar não-verde".
 - Tabela agrupada por BU Director, uma seção por diretor, com colunas:
@@ -537,3 +549,43 @@ em vez do ícone padrão do navegador.
 | **Acesso full** | Permissão que concede acesso total ao módulo Admin e a todos os clientes, independente do papel operacional da pessoa |
 | **Critérios** | Régua de referência que define o que qualifica cada pilar como G/A/R |
 | **Resumo executivo diário** | Email automático enviado todo dia às 6h (Brasília) com as mudanças das últimas 24 horas |
+
+---
+
+## 14. Aba Ajuda
+
+A navegação principal do sistema (junto com Painel, Riscos & Problemas,
+Organização e Admin) agora conta com uma aba **Ajuda**. Ela mostra este
+mesmo documento — a Especificação Funcional — de forma organizada e fácil
+de ler, direto dentro da aplicação. Assim, qualquer pessoa pode consultar
+como um recurso funciona sem precisar sair da ferramenta ou perguntar para
+outra pessoa.
+
+---
+
+## 15. Dados do DRE Gerencial (Power BI)
+
+Além do acompanhamento de status RAG, o sistema também guarda uma
+fotografia financeira mensal de cada cliente e da empresa como um todo,
+trazida do relatório oficial **"DRE Gerencial"** que a SysManager mantém
+no Power BI. Os números guardados são: Receita Bruta, Receita Líquida,
+Custo de Pessoal, Custo de Licença, Outros Custos, e Margem Bruta (em valor
+e em percentual).
+
+Essa informação existe em dois níveis:
+- **Resumo da empresa**: Total, apenas Licenciamento e apenas Serviços,
+  mês a mês.
+- **Por cliente**: os mesmos números, quebrados por cliente, para quem
+  quiser olhar a saúde financeira de uma conta específica ao lado do
+  status RAG dela.
+
+Esses dados **não são ao vivo** — são atualizados periodicamente (não a
+cada acesso), como parte de um processo de atualização conduzido de forma
+guiada, e não automático a todo instante. Alguns clientes cadastrados no
+RAG Status ainda podem aparecer sem dado financeiro correspondente no DRE
+— isso acontece quando não há atividade financeira registrada para aquele
+cliente no período, ou, no caso específico da **Petrobras**, porque o DRE
+Gerencial trata a conta como um único valor combinado, enquanto o RAG
+Status acompanha 3 contratos separados dessa conta (Lote B, Lote C e
+Plataforma) — hoje não é possível quebrar o valor do DRE entre esses 3
+contratos individualmente.

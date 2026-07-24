@@ -168,6 +168,28 @@ CREATE TABLE IF NOT EXISTS metricas_diarias (
     riscos_atrasados INTEGER NOT NULL,
     criado_em TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS dre_resumo (
+    id SERIAL PRIMARY KEY,
+    escopo TEXT NOT NULL,
+    linha_dre TEXT NOT NULL,
+    competencia TEXT NOT NULL,
+    valor_planejado NUMERIC,
+    valor_realizado NUMERIC,
+    atualizado_em TEXT NOT NULL,
+    UNIQUE (escopo, linha_dre, competencia)
+);
+
+CREATE TABLE IF NOT EXISTS dre_cliente (
+    id SERIAL PRIMARY KEY,
+    cliente_nome TEXT NOT NULL,
+    metrica TEXT NOT NULL,
+    competencia TEXT NOT NULL,
+    valor_planejado NUMERIC,
+    valor_realizado NUMERIC,
+    atualizado_em TEXT NOT NULL,
+    UNIQUE (cliente_nome, metrica, competencia)
+);
 """
 
 
