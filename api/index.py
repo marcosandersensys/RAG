@@ -687,15 +687,6 @@ def login(payload: LoginIn):
     }
 
 
-@app.get("/api/_debug_dsn")
-def _debug_dsn():
-    dsn = os.environ.get("DATABASE_URL", "")
-    m = re.match(r"postgresql://([^:]+):[^@]+@([^/]+)/([^?]+)", dsn)
-    if not m:
-        return {"parsed": False}
-    return {"user": m.group(1), "host": m.group(2), "db": m.group(3)}
-
-
 @app.get("/api/auth/me")
 def auth_me(pessoa: dict = Depends(get_current_pessoa)):
     return {
