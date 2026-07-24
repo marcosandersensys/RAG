@@ -66,7 +66,6 @@ SESSAO_DIAS = 7
 # FP&A: grade de planejamento financeiro por cliente (Receita Bruta/Líquida/Margem %)
 FPA_METRICAS = ["Receita Bruta", "Receita Líquida", "Margem Bruta %"]
 FPA_MESES = [f"2026-{m:02d}" for m in range(1, 13)]
-FPA_MESES_EDITAVEIS = set(f"2026-{m:02d}" for m in range(6, 13))  # Jun-Dez
 FPA_ALIQUOTA_IMPOSTO = 0.0565  # Receita Líquida planejada = Receita Bruta planejada * (1 - aliquota)
 
 SCHEMA = """
@@ -860,10 +859,12 @@ def fpa_clientes(pessoa: dict = Depends(get_current_pessoa)):
     conn = get_conn()
 
     clientes = conn.execute(
-        """SELECT c.id AS cliente_id, c.nome AS cliente_nome,
-                  bd.id AS bud_id, bd.nome AS bud_nome
+        """SELECT c.id AS cliente_id, c.nome AS cliente_nome, c.industry_code,
+                  bd.id AS bud_id, bd.nome AS bud_nome,
+                  amp.id AS amp_id, amp.nome AS amp_nome
            FROM clientes c
            LEFT JOIN pessoas bd ON bd.id = c.bu_director_id
+           LEFT JOIN pessoas amp ON amp.id = c.am_id
            WHERE c.ativo = 1
            ORDER BY bd.id NULLS LAST, c.nome"""
     ).fetchall()
@@ -874,6 +875,7 @@ def fpa_clientes(pessoa: dict = Depends(get_current_pessoa)):
            WHERE metrica = ANY(?) AND competencia = ANY(?)""",
         (FPA_METRICAS, FPA_MESES),
     ).fetchall()
+    dms_por_cliente = _all_dms(conn)
     conn.close()
 
     valores_por_cliente = defaultdict(dict)
@@ -896,23 +898,37 @@ def fpa_clientes(pessoa: dict = Depends(get_current_pessoa)):
         resultado.append({
             "id": c["cliente_id"],
             "nome": c["cliente_nome"],
+            "industry_code": c["industry_code"],
             "bu_director": {"id": c["bud_id"], "nome": c["bud_nome"]} if c["bud_id"] else None,
+            "am": {"id": c["amp_id"], "nome": c["amp_nome"]} if c["amp_id"] else None,
+            "dms": dms_por_cliente.get(c["cliente_id"], []),
             "metricas": metricas,
         })
 
-    return {"meses": FPA_MESES, "meses_editaveis": sorted(FPA_MESES_EDITAVEIS), "clientes": resultado}
+    return {"meses": FPA_MESES, "clientes": resultado}
 
 
 @app.put("/api/fpa/valores")
 def fpa_atualizar_valor(payload: FpaValorIn, pessoa: dict = Depends(get_current_pessoa)):
     _require_acesso_fpa(pessoa)
-    if payload.competencia not in FPA_MESES_EDITAVEIS:
-        raise HTTPException(400, "Só é possível editar o Planejado de Jun/26 a Dez/26.")
+    if payload.competencia not in FPA_MESES:
+        raise HTTPException(400, "Competência fora do período do FP&A.")
     if payload.metrica not in ("Receita Bruta", "Margem Bruta %"):
         raise HTTPException(400, "Só é possível editar Receita Bruta ou Margem Bruta %.")
 
     conn = get_conn()
     ts = now_iso()
+
+    # Editável só enquanto não houver Realizado carregado para essa competência —
+    # assim que o processo atualizar-dre trouxer o real de um mês, ele trava
+    # automaticamente (não depende de um calendário fixo Jun-Dez).
+    existente = conn.execute(
+        "SELECT valor_realizado FROM dre_cliente WHERE cliente_nome=? AND metrica=? AND competencia=?",
+        (payload.cliente_nome, payload.metrica, payload.competencia),
+    ).fetchone()
+    if existente and existente["valor_realizado"] is not None:
+        conn.close()
+        raise HTTPException(400, "Este mês já tem valor Realizado carregado — não é mais editável.")
 
     def upsert(metrica: str, valor: Optional[float]):
         conn.execute(

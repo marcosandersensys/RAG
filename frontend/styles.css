@@ -389,6 +389,7 @@ tr.risco-atrasado:hover td{background:rgba(220,38,38,.09)}
 .tabela-fpa .fpa-col-linha{text-align:left;min-width:110px;position:sticky;left:130px;background:#fff;z-index:1;color:var(--text-muted);font-weight:600}
 .tabela-fpa .fpa-cliente-nome{font-weight:700;font-family:var(--font-heading);color:var(--sys-blue);vertical-align:top}
 .tabela-fpa td.num{text-align:right;min-width:78px}
+.fpa-mes-divisor{border-left:1px solid var(--border-subtle)}
 .fpa-static{font-variant-numeric:tabular-nums}
 .fpa-disabled{color:var(--text-muted)}
 .fpa-var{font-variant-numeric:tabular-nums;color:var(--text-muted);font-size:11px}

@@ -32,7 +32,7 @@ const state = {
   auditoria: [],
   orgView: "cliente",
   adminView: "pessoas",
-  fpa: { meses: [], mesesEditaveis: [], clientes: [] },
+  fpa: { meses: [], clientes: [] },
 };
 
 const session = {
@@ -636,40 +636,77 @@ async function loadFpa() {
   ]);
   state.pessoas = pessoas;
   state.fpa = dados;
+  populateFiltrosFpa(dados.clientes);
   renderFpaSecoes();
 }
 
+function populateFiltrosFpa(clientes) {
+  const buSel = document.getElementById("filtro-fpa-bu-director");
+  const industrySel = document.getElementById("filtro-fpa-industry");
+  const currentBu = buSel.value;
+  const currentIndustry = industrySel.value;
+
+  const diretores = diretoresOrdenados();
+  const industries = [...new Set(clientes.map(c => c.industry_code))].sort();
+
+  buSel.innerHTML = `<option value="">BU Director (todos)</option>` +
+    diretores.map(d => `<option value="${d.id}">${esc(d.nome)}</option>`).join("");
+  industrySel.innerHTML = `<option value="">Industry Code (todos)</option>` +
+    industries.map(i => `<option value="${esc(i)}">${esc(i)}</option>`).join("");
+
+  buSel.value = currentBu;
+  industrySel.value = currentIndustry;
+}
+
 function renderFpaSecoes() {
+  const busca = document.getElementById("filtro-fpa-busca").value.trim().toLowerCase();
+  const buDirectorId = document.getElementById("filtro-fpa-bu-director").value;
+  const industry = document.getElementById("filtro-fpa-industry").value;
+
   const diretores = diretoresOrdenados();
   const container = document.getElementById("fpa-secoes");
-  const { meses, mesesEditaveis, clientes } = state.fpa;
-  const editaveis = new Set(mesesEditaveis);
+  const { meses } = state.fpa;
 
-  if (!clientes.length) {
-    container.innerHTML = `<div class="card"><div class="empty-state">Nenhum cliente encontrado.</div></div>`;
+  const linhas = state.fpa.clientes.filter(c => {
+    if (buDirectorId && (!c.bu_director || String(c.bu_director.id) !== buDirectorId)) return false;
+    if (industry && c.industry_code !== industry) return false;
+    if (busca) {
+      const haystack = [c.nome, c.am && c.am.nome, ...(c.dms || []).map(d => d.nome)]
+        .filter(Boolean).join(" ").toLowerCase();
+      if (!haystack.includes(busca)) return false;
+    }
+    return true;
+  });
+
+  if (!linhas.length) {
+    container.innerHTML = `<div class="card"><div class="empty-state">Nenhum cliente encontrado com os filtros atuais.</div></div>`;
     return;
   }
 
-  const linhaCampo = (cliente, metrica, mes) => {
+  const linhaCampo = (cliente, metrica, mes, mesIdx) => {
     const planejado = fpaValor(cliente, metrica, mes, "planejado");
     const realizado = fpaValor(cliente, metrica, mes, "realizado");
-    const editavel = editaveis.has(mes) && (metrica === "Receita Bruta" || metrica === "Margem Bruta %");
+    // Editável enquanto não houver Realizado carregado para essa competência —
+    // assim que o mês tiver real (via processo atualizar-dre), trava sozinho.
+    const editavel = (realizado === null || realizado === undefined)
+      && (metrica === "Receita Bruta" || metrica === "Margem Bruta %");
     const fmtValor = metrica === "Margem Bruta %" ? fmtFpaPercentual : fmtFpaNumero;
     const fmtVariacao = metrica === "Margem Bruta %" ? fmtFpaVariacaoPP : fmtFpaVariacaoPct;
+    const divisor = mesIdx > 0 ? " fpa-mes-divisor" : "";
 
     const celPlanejado = editavel
       ? `<input type="text" inputmode="decimal" class="fpa-input" data-cliente="${esc(cliente.nome)}" data-metrica="${esc(metrica)}" data-mes="${mes}" value="${fmtFpaInputValue(planejado)}">`
       : `<span class="fpa-static fpa-disabled">${fmtValor(planejado)}</span>`;
 
     return `
-      <td class="num">${celPlanejado}</td>
+      <td class="num${divisor}">${celPlanejado}</td>
       <td class="num"><span class="fpa-static fpa-disabled">${fmtValor(realizado)}</span></td>
       <td class="num"><span class="fpa-static fpa-var">${fmtVariacao(realizado, planejado)}</span></td>
     `;
   };
 
   container.innerHTML = diretores.map((dir, idx) => {
-    const clientesDoDir = clientes.filter(c => c.bu_director && c.bu_director.id === dir.id);
+    const clientesDoDir = linhas.filter(c => c.bu_director && c.bu_director.id === dir.id);
     if (clientesDoDir.length === 0) return "";
 
     return `
@@ -686,10 +723,10 @@ function renderFpaSecoes() {
                 <tr>
                   <th rowspan="2" class="fpa-col-cliente">Cliente</th>
                   <th rowspan="2" class="fpa-col-linha">Linha</th>
-                  ${meses.map(mes => `<th colspan="3" class="fpa-mes-header">${fpaMesLabel(mes)}</th>`).join("")}
+                  ${meses.map((mes, i) => `<th colspan="3" class="fpa-mes-header${i > 0 ? " fpa-mes-divisor" : ""}">${fpaMesLabel(mes)}</th>`).join("")}
                 </tr>
                 <tr class="fpa-sub-row">
-                  ${meses.map(() => `<th class="fpa-sub">Plan.</th><th class="fpa-sub">Real.</th><th class="fpa-sub">Var.</th>`).join("")}
+                  ${meses.map((mes, i) => `<th class="fpa-sub${i > 0 ? " fpa-mes-divisor" : ""}">Plan.</th><th class="fpa-sub">Real.</th><th class="fpa-sub">Var.</th>`).join("")}
                 </tr>
               </thead>
               <tbody>
@@ -698,7 +735,7 @@ function renderFpaSecoes() {
                     <tr>
                       ${i === 0 ? `<td rowspan="${FPA_LINHAS.length}" class="fpa-col-cliente fpa-cliente-nome">${esc(cliente.nome)}</td>` : ""}
                       <td class="fpa-col-linha">${esc(FPA_LINHA_LABEL[metrica])}</td>
-                      ${meses.map(mes => linhaCampo(cliente, metrica, mes)).join("")}
+                      ${meses.map((mes, mesIdx) => linhaCampo(cliente, metrica, mes, mesIdx)).join("")}
                     </tr>
                   `).join("")}
                 `).join("")}
@@ -716,6 +753,11 @@ function renderFpaSecoes() {
     input.addEventListener("change", () => salvarFpaValor(input));
   });
 }
+
+["filtro-fpa-busca", "filtro-fpa-bu-director", "filtro-fpa-industry"].forEach(id => {
+  document.getElementById(id).addEventListener("input", renderFpaSecoes);
+  document.getElementById(id).addEventListener("change", renderFpaSecoes);
+});
 
 async function salvarFpaValor(input) {
   const clienteNome = input.dataset.cliente;
