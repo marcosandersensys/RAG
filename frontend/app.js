@@ -658,6 +658,34 @@ function populateFiltrosFpa(clientes) {
   industrySel.value = currentIndustry;
 }
 
+const FPA_TRIMESTRES = ["T1", "T2", "T3", "T4"];
+const fpaTrimestresColapsados = new Set();
+
+function fpaTrimestreDoMes(mes) {
+  const n = Number(mes.split("-")[1]);
+  if (n <= 3) return "T1";
+  if (n <= 6) return "T2";
+  if (n <= 9) return "T3";
+  return "T4";
+}
+
+// Lista plana de colunas visíveis: um trimestre recolhido vira uma única
+// coluna "..." em vez dos 3 meses (9 sub-colunas) que ele normalmente ocupa.
+function fpaColunasVisiveis(meses) {
+  const colunas = [];
+  let ultimoTri = null;
+  for (const mes of meses) {
+    const tri = fpaTrimestreDoMes(mes);
+    if (fpaTrimestresColapsados.has(tri)) {
+      if (ultimoTri !== tri) colunas.push({ tipo: "colapsado", trimestre: tri });
+    } else {
+      colunas.push({ tipo: "mes", mes, trimestre: tri });
+    }
+    ultimoTri = tri;
+  }
+  return colunas;
+}
+
 function renderFpaSecoes() {
   const busca = document.getElementById("filtro-fpa-busca").value.trim().toLowerCase();
   const buDirectorId = document.getElementById("filtro-fpa-bu-director").value;
@@ -666,6 +694,7 @@ function renderFpaSecoes() {
   const diretores = diretoresOrdenados();
   const container = document.getElementById("fpa-secoes");
   const { meses } = state.fpa;
+  const colunas = fpaColunasVisiveis(meses);
 
   const linhas = state.fpa.clientes.filter(c => {
     if (buDirectorId && (!c.bu_director || String(c.bu_director.id) !== buDirectorId)) return false;
@@ -683,7 +712,29 @@ function renderFpaSecoes() {
     return;
   }
 
-  const linhaCampo = (cliente, metrica, mes, mesIdx) => {
+  const grupoHeaderHtml = FPA_TRIMESTRES.map(tri => {
+    const colapsado = fpaTrimestresColapsados.has(tri);
+    const qtdMeses = meses.filter(m => fpaTrimestreDoMes(m) === tri).length;
+    const colspan = colapsado ? 1 : qtdMeses * 3;
+    const divisor = tri !== "T1" ? " fpa-mes-divisor" : "";
+    return `<th class="fpa-trimestre-toggle${divisor}" data-trimestre="${tri}" colspan="${colspan}" title="${colapsado ? "Expandir" : "Recolher"} ${tri}">${colapsado ? "+" : "−"}&nbsp;${tri}</th>`;
+  }).join("");
+
+  const mesHeaderHtml = colunas.map((col, i) => {
+    const divisor = i > 0 ? " fpa-mes-divisor" : "";
+    return col.tipo === "colapsado"
+      ? `<th class="fpa-mes-header fpa-colapsado${divisor}">···</th>`
+      : `<th colspan="3" class="fpa-mes-header${divisor}">${fpaMesLabel(col.mes)}</th>`;
+  }).join("");
+
+  const subHeaderHtml = colunas.map((col, i) => {
+    const divisor = i > 0 ? " fpa-mes-divisor" : "";
+    return col.tipo === "colapsado"
+      ? `<th class="fpa-sub fpa-colapsado${divisor}"></th>`
+      : `<th class="fpa-sub${divisor}">Plan.</th><th class="fpa-sub">Real.</th><th class="fpa-sub">Var.</th>`;
+  }).join("");
+
+  const linhaCampo = (cliente, metrica, mes, divisor) => {
     const planejado = fpaValor(cliente, metrica, mes, "planejado");
     const realizado = fpaValor(cliente, metrica, mes, "realizado");
     // Editável enquanto não houver Realizado carregado para essa competência —
@@ -692,7 +743,6 @@ function renderFpaSecoes() {
       && (metrica === "Receita Bruta" || metrica === "Margem Bruta %");
     const fmtValor = metrica === "Margem Bruta %" ? fmtFpaPercentual : fmtFpaNumero;
     const fmtVariacao = metrica === "Margem Bruta %" ? fmtFpaVariacaoPP : fmtFpaVariacaoPct;
-    const divisor = mesIdx > 0 ? " fpa-mes-divisor" : "";
 
     const celPlanejado = editavel
       ? `<input type="text" inputmode="decimal" class="fpa-input" data-cliente="${esc(cliente.nome)}" data-metrica="${esc(metrica)}" data-mes="${mes}" value="${fmtFpaInputValue(planejado)}">`
@@ -704,6 +754,13 @@ function renderFpaSecoes() {
       <td class="num"><span class="fpa-static fpa-var">${fmtVariacao(realizado, planejado)}</span></td>
     `;
   };
+
+  const linhaCelulasHtml = (cliente, metrica) => colunas.map((col, i) => {
+    const divisor = i > 0 ? " fpa-mes-divisor" : "";
+    return col.tipo === "colapsado"
+      ? `<td class="fpa-colapsado${divisor}"></td>`
+      : linhaCampo(cliente, metrica, col.mes, divisor);
+  }).join("");
 
   container.innerHTML = diretores.map((dir, idx) => {
     const clientesDoDir = linhas.filter(c => c.bu_director && c.bu_director.id === dir.id);
@@ -721,13 +778,12 @@ function renderFpaSecoes() {
             <table class="tabela-fpa">
               <thead>
                 <tr>
-                  <th rowspan="2" class="fpa-col-cliente">Cliente</th>
-                  <th rowspan="2" class="fpa-col-linha">Linha</th>
-                  ${meses.map((mes, i) => `<th colspan="3" class="fpa-mes-header${i > 0 ? " fpa-mes-divisor" : ""}">${fpaMesLabel(mes)}</th>`).join("")}
+                  <th rowspan="3" class="fpa-col-cliente">Cliente</th>
+                  <th rowspan="3" class="fpa-col-linha">Linha</th>
+                  ${grupoHeaderHtml}
                 </tr>
-                <tr class="fpa-sub-row">
-                  ${meses.map((mes, i) => `<th class="fpa-sub${i > 0 ? " fpa-mes-divisor" : ""}">Plan.</th><th class="fpa-sub">Real.</th><th class="fpa-sub">Var.</th>`).join("")}
-                </tr>
+                <tr>${mesHeaderHtml}</tr>
+                <tr class="fpa-sub-row">${subHeaderHtml}</tr>
               </thead>
               <tbody>
                 ${clientesDoDir.map(cliente => `
@@ -735,7 +791,7 @@ function renderFpaSecoes() {
                     <tr>
                       ${i === 0 ? `<td rowspan="${FPA_LINHAS.length}" class="fpa-col-cliente fpa-cliente-nome">${esc(cliente.nome)}</td>` : ""}
                       <td class="fpa-col-linha">${esc(FPA_LINHA_LABEL[metrica])}</td>
-                      ${meses.map((mes, mesIdx) => linhaCampo(cliente, metrica, mes, mesIdx)).join("")}
+                      ${linhaCelulasHtml(cliente, metrica)}
                     </tr>
                   `).join("")}
                 `).join("")}
@@ -751,6 +807,14 @@ function renderFpaSecoes() {
     input.addEventListener("focus", () => { input.select(); });
     input.addEventListener("keydown", (e) => { if (e.key === "Enter") input.blur(); });
     input.addEventListener("change", () => salvarFpaValor(input));
+  });
+  container.querySelectorAll(".fpa-trimestre-toggle").forEach(th => {
+    th.addEventListener("click", () => {
+      const tri = th.dataset.trimestre;
+      if (fpaTrimestresColapsados.has(tri)) fpaTrimestresColapsados.delete(tri);
+      else fpaTrimestresColapsados.add(tri);
+      renderFpaSecoes();
+    });
   });
 }
 
