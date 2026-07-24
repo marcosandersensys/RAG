@@ -63,6 +63,12 @@ SCORE_CORTE_A = 50
 SENHA_PADRAO = "SysManager@2026"
 SESSAO_DIAS = 7
 
+# FP&A: grade de planejamento financeiro por cliente (Receita Bruta/Líquida/Margem %)
+FPA_METRICAS = ["Receita Bruta", "Receita Líquida", "Margem Bruta %"]
+FPA_MESES = [f"2026-{m:02d}" for m in range(1, 13)]
+FPA_MESES_EDITAVEIS = set(f"2026-{m:02d}" for m in range(6, 13))  # Jun-Dez
+FPA_ALIQUOTA_IMPOSTO = 0.0565  # Receita Líquida planejada = Receita Bruta planejada * (1 - aliquota)
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS pessoas (
     id SERIAL PRIMARY KEY,
@@ -338,6 +344,16 @@ def _garantir_acesso_cliente(conn, pessoa: dict, cliente_id: int):
         raise HTTPException(403, "Sem acesso a este cliente")
 
 
+# FP&A: feature nova em prototipagem, liberada só para um usuário por enquanto
+# (pedido explícito do usuário) — não é um papel/flag novo no modelo de permissões.
+FPA_EMAIL_PERMITIDO = "marcos.andersen@sysmanager.com.br"
+
+
+def _require_acesso_fpa(pessoa: dict):
+    if pessoa["email"] != FPA_EMAIL_PERMITIDO:
+        raise HTTPException(403, "Acesso restrito")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
@@ -420,6 +436,13 @@ class StatusIn(BaseModel):
 class CriterioUpdate(BaseModel):
     descricao: Optional[str] = None
     linha: Optional[str] = None
+
+
+class FpaValorIn(BaseModel):
+    cliente_nome: str
+    metrica: str
+    competencia: str
+    valor_planejado: Optional[float] = None
 
 
 class LoginIn(BaseModel):
@@ -658,6 +681,7 @@ def login(payload: LoginIn):
             "id": row["id"],
             "nome": row["nome"],
             "papel": row["papel"],
+            "email": row["email"],
             "precisa_trocar_senha": bool(row["precisa_trocar_senha"]),
             "acesso_full": bool(row["acesso_full"]),
         },
@@ -670,6 +694,7 @@ def auth_me(pessoa: dict = Depends(get_current_pessoa)):
         "id": pessoa["id"],
         "nome": pessoa["nome"],
         "papel": pessoa["papel"],
+        "email": pessoa["email"],
         "precisa_trocar_senha": bool(pessoa["precisa_trocar_senha"]),
         "acesso_full": bool(pessoa.get("acesso_full")),
     }
@@ -826,6 +851,107 @@ def detalhe_cliente(cliente_id: int, pessoa: dict = Depends(get_current_pessoa))
         "historico": [dict(h) for h in historico],
         "riscos": [dict(r) for r in riscos],
         **calcular_score(pilares_status),
+    }
+
+
+@app.get("/api/fpa/clientes")
+def fpa_clientes(pessoa: dict = Depends(get_current_pessoa)):
+    _require_acesso_fpa(pessoa)
+    conn = get_conn()
+
+    clientes = conn.execute(
+        """SELECT c.id AS cliente_id, c.nome AS cliente_nome,
+                  bd.id AS bud_id, bd.nome AS bud_nome
+           FROM clientes c
+           LEFT JOIN pessoas bd ON bd.id = c.bu_director_id
+           WHERE c.ativo = 1
+           ORDER BY bd.id NULLS LAST, c.nome"""
+    ).fetchall()
+
+    valores = conn.execute(
+        """SELECT cliente_nome, metrica, competencia, valor_planejado, valor_realizado
+           FROM dre_cliente
+           WHERE metrica = ANY(?) AND competencia = ANY(?)""",
+        (FPA_METRICAS, FPA_MESES),
+    ).fetchall()
+    conn.close()
+
+    valores_por_cliente = defaultdict(dict)
+    for v in valores:
+        chave = (v["metrica"], v["competencia"])
+        valores_por_cliente[v["cliente_nome"]][chave] = {
+            "planejado": float(v["valor_planejado"]) if v["valor_planejado"] is not None else None,
+            "realizado": float(v["valor_realizado"]) if v["valor_realizado"] is not None else None,
+        }
+
+    resultado = []
+    for c in clientes:
+        valores_cliente = valores_por_cliente.get(c["cliente_nome"], {})
+        metricas = {}
+        for metrica in FPA_METRICAS:
+            metricas[metrica] = {
+                mes: valores_cliente.get((metrica, mes), {"planejado": None, "realizado": None})
+                for mes in FPA_MESES
+            }
+        resultado.append({
+            "id": c["cliente_id"],
+            "nome": c["cliente_nome"],
+            "bu_director": {"id": c["bud_id"], "nome": c["bud_nome"]} if c["bud_id"] else None,
+            "metricas": metricas,
+        })
+
+    return {"meses": FPA_MESES, "meses_editaveis": sorted(FPA_MESES_EDITAVEIS), "clientes": resultado}
+
+
+@app.put("/api/fpa/valores")
+def fpa_atualizar_valor(payload: FpaValorIn, pessoa: dict = Depends(get_current_pessoa)):
+    _require_acesso_fpa(pessoa)
+    if payload.competencia not in FPA_MESES_EDITAVEIS:
+        raise HTTPException(400, "Só é possível editar o Planejado de Jun/26 a Dez/26.")
+    if payload.metrica not in ("Receita Bruta", "Margem Bruta %"):
+        raise HTTPException(400, "Só é possível editar Receita Bruta ou Margem Bruta %.")
+
+    conn = get_conn()
+    ts = now_iso()
+
+    def upsert(metrica: str, valor: Optional[float]):
+        conn.execute(
+            """INSERT INTO dre_cliente (cliente_nome, metrica, competencia, valor_planejado, valor_realizado, atualizado_em)
+               VALUES (?, ?, ?, ?, NULL, ?)
+               ON CONFLICT (cliente_nome, metrica, competencia) DO UPDATE SET
+                   valor_planejado = EXCLUDED.valor_planejado,
+                   atualizado_em = EXCLUDED.atualizado_em""",
+            (payload.cliente_nome, metrica, payload.competencia, valor, ts),
+        )
+
+    upsert(payload.metrica, payload.valor_planejado)
+
+    receita_liquida = None
+    if payload.metrica == "Receita Bruta":
+        receita_liquida = (
+            round(payload.valor_planejado * (1 - FPA_ALIQUOTA_IMPOSTO), 2)
+            if payload.valor_planejado is not None else None
+        )
+        upsert("Receita Líquida", receita_liquida)
+
+    conn.execute(
+        """INSERT INTO auditoria (entidade, entidade_id, acao, pessoa_id, pessoa_nome, detalhes, criado_em)
+           VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+        (
+            "dre_cliente", None, "editar_planejado", pessoa["id"], pessoa["nome"],
+            f"{payload.cliente_nome} / {payload.metrica} / {payload.competencia} = {payload.valor_planejado}",
+            ts,
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+    return {
+        "cliente_nome": payload.cliente_nome,
+        "metrica": payload.metrica,
+        "competencia": payload.competencia,
+        "valor_planejado": payload.valor_planejado,
+        "receita_liquida_planejada": receita_liquida,
     }
 
 

@@ -378,3 +378,20 @@ tr.risco-atrasado:hover td{background:rgba(220,38,38,.09)}
 .ajuda-content th{background:var(--table-header-bg);color:#fff;text-align:left;padding:8px 12px;font-weight:700}
 .ajuda-content td{padding:8px 12px;border-bottom:1px solid var(--border-subtle)}
 .ajuda-content tbody tr:nth-child(even) td{background:#FAFBFC}
+
+/* FP&A */
+.tabela-fpa{border-collapse:collapse;font-size:12px;white-space:nowrap}
+.tabela-fpa th,.tabela-fpa td{padding:6px 8px;border-bottom:1px solid var(--border-subtle)}
+.tabela-fpa thead th{background:var(--table-header-bg);color:#fff;font-weight:700;text-align:center;position:sticky;top:0}
+.tabela-fpa .fpa-sub-row th{font-size:10.5px;font-weight:600;padding:4px 8px}
+.tabela-fpa .fpa-col-cliente{text-align:left;min-width:130px;position:sticky;left:0;background:#fff;z-index:1}
+.tabela-fpa thead .fpa-col-cliente,.tabela-fpa thead .fpa-col-linha{z-index:2}
+.tabela-fpa .fpa-col-linha{text-align:left;min-width:110px;position:sticky;left:130px;background:#fff;z-index:1;color:var(--text-muted);font-weight:600}
+.tabela-fpa .fpa-cliente-nome{font-weight:700;font-family:var(--font-heading);color:var(--sys-blue);vertical-align:top}
+.tabela-fpa td.num{text-align:right;min-width:78px}
+.fpa-static{font-variant-numeric:tabular-nums}
+.fpa-disabled{color:var(--text-muted)}
+.fpa-var{font-variant-numeric:tabular-nums;color:var(--text-muted);font-size:11px}
+.fpa-input{width:76px;text-align:right;font-variant-numeric:tabular-nums;font-family:var(--font-body);font-size:12px;border:1px solid var(--border-subtle);border-radius:4px;padding:4px 6px;background:#fff}
+.fpa-input:focus{outline:none;border-color:var(--sys-blue);box-shadow:0 0 0 2px rgba(16,89,175,.12)}
+.fpa-input:disabled{background:var(--bg-page);color:var(--text-muted)}

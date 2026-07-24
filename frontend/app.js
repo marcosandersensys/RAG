@@ -20,6 +20,10 @@ const PILAR_DONO = {
 const PAPEL_LABELS = { bu_director: "BU Director", am: "AM", dm: "DM", admin: "Admin" };
 const DIRECTOR_COLORS = ["var(--sys-magenta)", "var(--sys-blue)", "var(--sys-purple)"];
 
+const FPA_MESES_LABEL = { 1: "Jan", 2: "Fev", 3: "Mar", 4: "Abr", 5: "Mai", 6: "Jun", 7: "Jul", 8: "Ago", 9: "Set", 10: "Out", 11: "Nov", 12: "Dez" };
+const FPA_LINHAS = ["Receita Bruta", "Receita Líquida", "Margem Bruta %"];
+const FPA_LINHA_LABEL = { "Receita Bruta": "Receita Bruta", "Receita Líquida": "Receita Líquida", "Margem Bruta %": "Margem %" };
+
 const state = {
   clientes: [],
   pessoas: [],
@@ -28,6 +32,7 @@ const state = {
   auditoria: [],
   orgView: "cliente",
   adminView: "pessoas",
+  fpa: { meses: [], mesesEditaveis: [], clientes: [] },
 };
 
 const session = {
@@ -130,6 +135,7 @@ document.querySelector('.tab[data-view="admin"]').addEventListener("click", () =
   loadAuditoria();
 });
 document.querySelector('.tab[data-view="ajuda"]').addEventListener("click", carregarAjuda);
+document.querySelector('.tab[data-view="fpa"]').addEventListener("click", loadFpa);
 
 let ajudaCarregada = false;
 async function carregarAjuda() {
@@ -203,6 +209,8 @@ function mostrarApp() {
   document.getElementById("topbar-user-nome").textContent = session.pessoa.nome;
   const temAcessoFull = session.pessoa.papel === "admin" || session.pessoa.acesso_full;
   document.getElementById("tab-admin").classList.toggle("hidden", !temAcessoFull);
+  // FP&A: em prototipagem, liberado só para um usuário por enquanto (pedido explícito).
+  document.getElementById("tab-fpa").classList.toggle("hidden", session.pessoa.email !== "marcos.andersen@sysmanager.com.br");
   renderModeloPontuacao();
 }
 
@@ -561,6 +569,186 @@ function renderPainelSecoes() {
   document.getElementById(id).addEventListener("input", renderPainelSecoes);
   document.getElementById(id).addEventListener("change", renderPainelSecoes);
 });
+
+// ---------- load & render: FP&A ----------
+
+function fpaMesLabel(mes) {
+  const [ano, mesNum] = mes.split("-");
+  return `${FPA_MESES_LABEL[Number(mesNum)]}/${ano.slice(2)}`;
+}
+
+function fpaValor(cliente, metrica, mes, campo) {
+  const registro = cliente.metricas[metrica] && cliente.metricas[metrica][mes];
+  return registro ? registro[campo] : null;
+}
+
+function fmtFpaNumero(v) {
+  if (v === null || v === undefined) return "—";
+  return Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 0 });
+}
+
+function fmtFpaPercentual(v) {
+  if (v === null || v === undefined) return "—";
+  return Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%";
+}
+
+function fmtFpaInputValue(v) {
+  if (v === null || v === undefined) return "";
+  return Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtFpaVariacaoPct(realizado, planejado) {
+  if (realizado === null || realizado === undefined || planejado === null || planejado === undefined || planejado === 0) return "—";
+  const pct = ((realizado - planejado) / Math.abs(planejado)) * 100;
+  const sinal = pct > 0 ? "+" : "";
+  return `${sinal}${pct.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+}
+
+function fmtFpaVariacaoPP(realizado, planejado) {
+  if (realizado === null || realizado === undefined || planejado === null || planejado === undefined) return "—";
+  const diff = realizado - planejado;
+  const sinal = diff > 0 ? "+" : "";
+  return `${sinal}${diff.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} p.p.`;
+}
+
+function parseFpaInput(raw) {
+  if (raw == null) return null;
+  let s = String(raw).trim().replace(/[^\d,.\-]/g, "");
+  if (s === "" || s === "-") return null;
+  const ultimaVirgula = s.lastIndexOf(",");
+  const ultimoPonto = s.lastIndexOf(".");
+  const ultimoSep = Math.max(ultimaVirgula, ultimoPonto);
+  let n;
+  if (ultimoSep === -1) {
+    n = parseFloat(s);
+  } else {
+    const parteInteira = s.slice(0, ultimoSep).replace(/[.,]/g, "");
+    const parteDecimal = s.slice(ultimoSep + 1).replace(/[.,]/g, "");
+    n = parseFloat(`${parteInteira}.${parteDecimal}`);
+  }
+  return isNaN(n) ? null : n;
+}
+
+async function loadFpa() {
+  const [dados, pessoas] = await Promise.all([
+    api("/api/fpa/clientes"),
+    api("/api/pessoas"),
+  ]);
+  state.pessoas = pessoas;
+  state.fpa = dados;
+  renderFpaSecoes();
+}
+
+function renderFpaSecoes() {
+  const diretores = diretoresOrdenados();
+  const container = document.getElementById("fpa-secoes");
+  const { meses, mesesEditaveis, clientes } = state.fpa;
+  const editaveis = new Set(mesesEditaveis);
+
+  if (!clientes.length) {
+    container.innerHTML = `<div class="card"><div class="empty-state">Nenhum cliente encontrado.</div></div>`;
+    return;
+  }
+
+  const linhaCampo = (cliente, metrica, mes) => {
+    const planejado = fpaValor(cliente, metrica, mes, "planejado");
+    const realizado = fpaValor(cliente, metrica, mes, "realizado");
+    const editavel = editaveis.has(mes) && (metrica === "Receita Bruta" || metrica === "Margem Bruta %");
+    const fmtValor = metrica === "Margem Bruta %" ? fmtFpaPercentual : fmtFpaNumero;
+    const fmtVariacao = metrica === "Margem Bruta %" ? fmtFpaVariacaoPP : fmtFpaVariacaoPct;
+
+    const celPlanejado = editavel
+      ? `<input type="text" inputmode="decimal" class="fpa-input" data-cliente="${esc(cliente.nome)}" data-metrica="${esc(metrica)}" data-mes="${mes}" value="${fmtFpaInputValue(planejado)}">`
+      : `<span class="fpa-static fpa-disabled">${fmtValor(planejado)}</span>`;
+
+    return `
+      <td class="num">${celPlanejado}</td>
+      <td class="num"><span class="fpa-static fpa-disabled">${fmtValor(realizado)}</span></td>
+      <td class="num"><span class="fpa-static fpa-var">${fmtVariacao(realizado, planejado)}</span></td>
+    `;
+  };
+
+  container.innerHTML = diretores.map((dir, idx) => {
+    const clientesDoDir = clientes.filter(c => c.bu_director && c.bu_director.id === dir.id);
+    if (clientesDoDir.length === 0) return "";
+
+    return `
+      <div class="bu-section">
+        <div class="bu-section-header">
+          <span class="bu-dot" style="background:${directorColor(idx)}"></span>
+          <span class="bu-section-title">${esc(dir.nome)}</span>
+          <span class="bu-section-meta">BU Director</span>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table class="tabela-fpa">
+              <thead>
+                <tr>
+                  <th rowspan="2" class="fpa-col-cliente">Cliente</th>
+                  <th rowspan="2" class="fpa-col-linha">Linha</th>
+                  ${meses.map(mes => `<th colspan="3" class="fpa-mes-header">${fpaMesLabel(mes)}</th>`).join("")}
+                </tr>
+                <tr class="fpa-sub-row">
+                  ${meses.map(() => `<th class="fpa-sub">Plan.</th><th class="fpa-sub">Real.</th><th class="fpa-sub">Var.</th>`).join("")}
+                </tr>
+              </thead>
+              <tbody>
+                ${clientesDoDir.map(cliente => `
+                  ${FPA_LINHAS.map((metrica, i) => `
+                    <tr>
+                      ${i === 0 ? `<td rowspan="${FPA_LINHAS.length}" class="fpa-col-cliente fpa-cliente-nome">${esc(cliente.nome)}</td>` : ""}
+                      <td class="fpa-col-linha">${esc(FPA_LINHA_LABEL[metrica])}</td>
+                      ${meses.map(mes => linhaCampo(cliente, metrica, mes)).join("")}
+                    </tr>
+                  `).join("")}
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  container.querySelectorAll(".fpa-input").forEach(input => {
+    input.addEventListener("focus", () => { input.select(); });
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") input.blur(); });
+    input.addEventListener("change", () => salvarFpaValor(input));
+  });
+}
+
+async function salvarFpaValor(input) {
+  const clienteNome = input.dataset.cliente;
+  const metrica = input.dataset.metrica;
+  const mes = input.dataset.mes;
+  const valor = parseFpaInput(input.value);
+
+  const cliente = state.fpa.clientes.find(c => c.nome === clienteNome);
+  const anterior = cliente ? fpaValor(cliente, metrica, mes, "planejado") : null;
+  if (valor === anterior) {
+    input.value = fmtFpaInputValue(valor);
+    return;
+  }
+
+  input.disabled = true;
+  try {
+    const resp = await api("/api/fpa/valores", {
+      method: "PUT",
+      body: JSON.stringify({ cliente_nome: clienteNome, metrica, competencia: mes, valor_planejado: valor }),
+    });
+    if (cliente) {
+      cliente.metricas[metrica][mes].planejado = valor;
+      if (metrica === "Receita Bruta") {
+        cliente.metricas["Receita Líquida"][mes].planejado = resp.receita_liquida_planejada;
+      }
+    }
+    renderFpaSecoes();
+  } catch (e) {
+    alert(`Não foi possível salvar: ${e.message}`);
+    input.disabled = false;
+    input.value = fmtFpaInputValue(anterior);
+  }
+}
 
 // ---------- modal: atualizar status ----------
 
