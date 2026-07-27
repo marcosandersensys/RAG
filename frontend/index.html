@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="styles.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -97,6 +98,7 @@
       <button class="tab" data-view="organizacao">Organização</button>
       <button class="tab" data-view="admin" id="tab-admin">Admin</button>
       <button class="tab hidden" data-view="fpa" id="tab-fpa">FP&amp;A</button>
+      <button class="tab hidden" data-view="dre" id="tab-dre">DRE</button>
       <button class="tab" data-view="ajuda">Ajuda</button>
     </nav>
   </header>
@@ -365,6 +367,25 @@
       <div id="fpa-secoes"></div>
     </section>
 
+    <!-- DRE (dashboard gerencial) -->
+    <section id="view-dre" class="view">
+      <div class="dre-toolbar">
+        <div class="dre-ano-toggle" id="dre-ano-toggle">
+          <button class="dre-ano-btn active" data-ano="all">2025+26</button>
+          <button class="dre-ano-btn" data-ano="2025">2025</button>
+          <button class="dre-ano-btn" data-ano="2026">2026</button>
+        </div>
+        <div class="dre-subtabs" id="dre-subtabs">
+          <button class="dre-subtab active" data-sub="visao">Visão Geral</button>
+          <button class="dre-subtab" data-sub="evolucao">Evolução</button>
+          <button class="dre-subtab" data-sub="tipo">Tipo Fornecimento</button>
+          <button class="dre-subtab" data-sub="clientes">Clientes</button>
+          <button class="dre-subtab" data-sub="detalhes">Detalhes Clientes</button>
+        </div>
+      </div>
+      <div id="dre-conteudo"><p class="hint">Carregando…</p></div>
+    </section>
+
     <!-- AJUDA -->
     <section id="view-ajuda" class="view">
       <div class="card">
@@ -618,5 +639,6 @@
 <div id="print-view"></div>
 
 <script src="app.js"></script>
+<script src="dre.js"></script>
 </body>
 </html>

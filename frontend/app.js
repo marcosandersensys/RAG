@@ -136,6 +136,7 @@ document.querySelector('.tab[data-view="admin"]').addEventListener("click", () =
 });
 document.querySelector('.tab[data-view="ajuda"]').addEventListener("click", carregarAjuda);
 document.querySelector('.tab[data-view="fpa"]').addEventListener("click", loadFpa);
+document.querySelector('.tab[data-view="dre"]').addEventListener("click", () => { if (window.loadDre) window.loadDre(); });
 
 let ajudaCarregada = false;
 async function carregarAjuda() {
@@ -209,8 +210,10 @@ function mostrarApp() {
   document.getElementById("topbar-user-nome").textContent = session.pessoa.nome;
   const temAcessoFull = session.pessoa.papel === "admin" || session.pessoa.acesso_full;
   document.getElementById("tab-admin").classList.toggle("hidden", !temAcessoFull);
-  // FP&A: em prototipagem, liberado só para um usuário por enquanto (pedido explícito).
-  document.getElementById("tab-fpa").classList.toggle("hidden", session.pessoa.email !== "marcos.andersen@sysmanager.com.br");
+  // FP&A e DRE: em prototipagem, liberados só para um usuário por enquanto (pedido explícito).
+  const soDono = session.pessoa.email !== "marcos.andersen@sysmanager.com.br";
+  document.getElementById("tab-fpa").classList.toggle("hidden", soDono);
+  document.getElementById("tab-dre").classList.toggle("hidden", soDono);
   renderModeloPontuacao();
 }
 
