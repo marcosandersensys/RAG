@@ -11,7 +11,7 @@
   const dre = { data: null, ano: "all", sub: "visao", cli: null, charts: [], wired: false };
 
   // ---------- helpers ----------
-  function range() { return dre.ano === "2025" ? [0, 12] : dre.ano === "2026" ? [12, 17] : [0, 17]; }
+  function range() { return dre.ano === "2025" ? [0, 12] : dre.ano === "2026" ? [12, 18] : [0, 18]; }
   function sl(a) { const [i, j] = range(); return a.slice(i, j); }
   function meses() { return sl(dre.data.meses); }
   function sum(a) { return a.reduce((s, v) => s + (v || 0), 0); }
@@ -267,9 +267,9 @@
       });
     });
   }
-  // YoY Jan–Mai/25 vs Jan–Mai/26 (fixo, independe do filtro de ano) — só no modo all/…
+  // YoY Jan–Jun/25 vs Jan–Jun/26 (fixo, independe do filtro de ano) — só no modo all/…
   function dreYoYBlocos() {
-    const idx25 = [0, 1, 2, 3, 4], idx26 = [12, 13, 14, 15, 16];
+    const idx25 = [0, 1, 2, 3, 4, 5], idx26 = [12, 13, 14, 15, 16, 17];
     const rows = dre.data.clientes.map(c => {
       const a = idx25.reduce((s, i) => s + c.rl[i], 0), b = idx26.reduce((s, i) => s + c.rl[i], 0);
       const mbA = margemPond(idx25.map(i => c.rl[i]), idx25.map(i => c.margem_pct[i]));
@@ -279,11 +279,11 @@
     const cresc = rows.filter(r => r.varRl != null && r.varRl >= 0).sort((x, y) => y.varRl - x.varRl).slice(0, 6);
     const eros = rows.filter(r => r.varRl != null && r.varRl < 0).sort((x, y) => x.varRl - y.varRl).slice(0, 6);
     const tbl = (titulo, arr) => `<div class="card"><div class="dre-chart-head"><span class="dre-chart-title">${titulo}</span></div>
-      <div class="table-wrap"><table class="tabela-fpa dre-tab"><thead><tr><th>Cliente</th><th class="num">Jan–Mai/25</th><th class="num">Jan–Mai/26</th><th class="num">Var. RL YoY</th><th class="num">Δ MB (pp)</th></tr></thead>
+      <div class="table-wrap"><table class="tabela-fpa dre-tab"><thead><tr><th>Cliente</th><th class="num">Jan–Jun/25</th><th class="num">Jan–Jun/26</th><th class="num">Var. RL YoY</th><th class="num">Δ MB (pp)</th></tr></thead>
       <tbody>${arr.map(r => `<tr><td class="fpa-cliente-nome">${esc(r.nome)}</td><td class="num">${fmtBRL(r.a)}</td><td class="num">${fmtBRL(r.b)}</td>
         <td class="num" style="color:${r.varRl >= 0 ? C.verde : C.vermelho}">${r.varRl == null ? "—" : (r.varRl >= 0 ? "+" : "") + r.varRl.toFixed(1) + "%"}</td>
         <td class="num" style="color:${r.dmb >= 0 ? C.verde : C.vermelho}">${fmtPP(r.dmb)}</td></tr>`).join("")}</tbody></table></div></div>`;
-    return `<div class="dre-sec-title">Comparativo YoY YTD — Jan–Mai/25 vs Jan–Mai/26 <span class="dre-fixo">· fixo, independe do filtro</span></div>
+    return `<div class="dre-sec-title">Comparativo YoY YTD — Jan–Jun/25 vs Jan–Jun/26 <span class="dre-fixo">· fixo, independe do filtro</span></div>
       <div class="dre-grid2">${tbl("Top crescimento YoY", cresc)}${tbl("Erosão / Atenção YoY", eros)}</div>`;
   }
 
