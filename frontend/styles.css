@@ -420,8 +420,9 @@ tr.risco-atrasado:hover td{background:rgba(220,38,38,.09)}
 .dre-kpi-num{font-family:var(--font-heading);font-size:26px;font-weight:800;color:var(--sys-blue);margin:6px 0 2px;line-height:1.1}
 .dre-kpi-sub{font-size:11.5px;color:var(--text-muted)}
 .dre-chart-card{margin-bottom:16px;padding:16px 18px}
-.dre-chart-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap}
-.dre-chart-title{font-family:var(--font-heading);font-size:13px;font-weight:700;color:var(--text-primary);text-transform:uppercase;letter-spacing:.02em}
+.dre-chart-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px 12px;margin-bottom:12px;flex-wrap:wrap}
+.dre-chart-title{flex:1 1 auto;min-width:0;font-family:var(--font-heading);font-size:13px;font-weight:700;color:var(--text-primary);text-transform:uppercase;letter-spacing:.01em;line-height:1.3;overflow-wrap:anywhere}
+.dre-chart-sub{display:inline-block;margin-left:4px;font-size:11px;font-weight:600;color:var(--text-muted);text-transform:none;letter-spacing:0;white-space:nowrap}
 .dre-chart-wrap{position:relative;height:300px}
 .dre-chart-wrap.sm{height:200px}
 .dre-mini-toggle{display:inline-flex;border:1px solid var(--border-subtle);border-radius:20px;overflow:hidden}

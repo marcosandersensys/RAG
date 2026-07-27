@@ -74,7 +74,7 @@
       </div>
       <div class="card dre-chart-card">
         <div class="dre-chart-head">
-          <span class="dre-chart-title">Receita Líquida & Margem Bruta — ${periodoLabel()}</span>
+          <span class="dre-chart-title">Receita Líquida &amp; Margem Bruta <span class="dre-chart-sub">${periodoLabel()}</span></span>
           <div class="dre-mini-toggle" id="dre-vg-tog">
             <button class="active" data-k="total">Total</button>
             <button data-k="servicos">Serviços</button>
@@ -84,7 +84,7 @@
         <div class="dre-chart-wrap"><canvas id="dre-vg-rlmb"></canvas></div>
       </div>
       <div class="card dre-chart-card">
-        <div class="dre-chart-head"><span class="dre-chart-title">EBITDA & Lucro Líquido — ${periodoLabel()}</span></div>
+        <div class="dre-chart-head"><span class="dre-chart-title">EBITDA &amp; Lucro Líquido <span class="dre-chart-sub">${periodoLabel()}</span></span></div>
         <div class="dre-chart-wrap"><canvas id="dre-vg-eblu"></canvas></div>
       </div>`;
     const drawRlMb = (key) => {
@@ -229,11 +229,12 @@
   function renderClientes(box) {
     const L = meses(), e = dre.data.empresa;
     const totalRl = sum(sl(e.total.rl));
-    const linhas = dre.data.clientes.map(c => ({ nome: c.nome, rl: sum(sl(c.rl)), mb: margemPond(sl(c.rl), sl(c.margem_pct)) }));
-    linhas.push({ nome: "Outros", rl: sum(sl(dre.data.outros_rl)), mb: null });
-    linhas.sort((a, b) => b.rl - a.rl);
+    const linhasCli = dre.data.clientes.map(c => ({ nome: c.nome, rl: sum(sl(c.rl)), mb: margemPond(sl(c.rl), sl(c.margem_pct)) }));
+    linhasCli.sort((a, b) => b.rl - a.rl);
+    // "Outros" (agregado) sempre no final do ranking, independente do valor
+    const linhas = [...linhasCli, { nome: "Outros", rl: sum(sl(dre.data.outros_rl)), mb: null }];
     const maxRl = Math.max(...linhas.map(l => l.rl));
-    const top5 = linhas.filter(l => l.nome !== "Outros").slice(0, 5);
+    const top5 = linhasCli.slice(0, 5);
     const conc = totalRl ? top5.reduce((s, l) => s + l.rl, 0) / totalRl * 100 : 0;
     box.innerHTML = `
       <div class="dre-kpis">
@@ -241,7 +242,7 @@
         ${kpi("Receita Líquida — Total", fmtBRL(totalRl), periodoLabel(), C.azul)}
         ${kpi("Nº clientes desmembrados", "7", "+ Outros agregado", C.texto)}
       </div>
-      <div class="card"><div class="dre-chart-head"><span class="dre-chart-title">Ranking — Receita Líquida acumulada · ${periodoLabel()}</span></div>
+      <div class="card"><div class="dre-chart-head"><span class="dre-chart-title">Ranking — Receita Líquida acumulada <span class="dre-chart-sub">${periodoLabel()}</span></span></div>
       <div class="table-wrap"><table class="tabela-fpa dre-tab">
         <thead><tr><th>#</th><th>Cliente</th><th style="width:220px">Participação</th><th class="num">RL Acum.</th><th class="num">%</th><th class="num">Margem</th></tr></thead>
         <tbody>${linhas.map((l, i) => `<tr>
