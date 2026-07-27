@@ -589,3 +589,34 @@ Gerencial trata a conta como um único valor combinado, enquanto o RAG
 Status acompanha 3 contratos separados dessa conta (Lote B, Lote C e
 Plataforma) — hoje não é possível quebrar o valor do DRE entre esses 3
 contratos individualmente.
+
+---
+
+## 16. FP&A (Planejamento Financeiro)
+
+O sistema tem uma aba de **planejamento financeiro (FP&A)** que mostra, por
+cliente e agrupada por diretoria, três linhas financeiras — **Receita Bruta**,
+**Receita Líquida** e **Margem %** — mês a mês, de Janeiro a Dezembro de 2026.
+Para cada mês você vê lado a lado o **Planejado**, o **Realizado** e a
+**Variação** entre os dois, para acompanhar como o previsto está se comparando
+com o que de fato aconteceu.
+
+**Quem enxerga esta aba.** Por enquanto ela é restrita e aparece apenas para a
+pessoa responsável pela área financeira. As demais pessoas do sistema não veem
+essa aba.
+
+**Editar o planejamento.** Você pode preencher e ajustar o **Planejado dos
+meses futuros** — mas só a **Receita Bruta** e a **Margem %**. A **Receita
+Líquida é calculada automaticamente** (é a Receita Bruta menos 5,65% de
+imposto), então ela não é digitada à mão. E há uma regra importante: assim que
+o **Realizado** de um mês chega (pela atualização do DRE), aquele mês **trava**
+e deixa de ser editável — a ideia é que, uma vez que o número real chegou, o
+planejamento daquele mês vira histórico e não se mexe mais.
+
+**Focar em um período.** Dá para **recolher ou expandir cada trimestre (T1 a
+T4)** clicando no cabeçalho do trimestre. Assim você esconde os meses que não
+interessam no momento e deixa a tela mais enxuta para olhar só o período que
+está analisando.
+
+**Filtros.** A aba tem os mesmos filtros do Painel: busca por cliente, AM ou
+DM, filtro por diretoria (BU Director) e filtro por indústria (Industry Code).

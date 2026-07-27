@@ -3,7 +3,7 @@
 **Sistema:** RAG Status — Gestão Executiva de Clientes/Contratos (SysManager)
 **Repositório:** https://github.com/marcosandersensys/RAG
 **Produção:** https://rag-status.vercel.app
-**Última atualização deste documento:** 2026-07-23
+**Última atualização deste documento:** 2026-07-24
 
 ---
 
@@ -972,3 +972,119 @@ resumo diário por email — trate-a como puramente histórica.
   (`CRON_SECRET`, `RESEND_API_KEY`); se qualquer uma faltar, a rota falha
   silenciosamente do ponto de vista do usuário final (só aparece nos logs da
   função/Vercel Cron, não há alerta ativo de falha de envio).
+
+---
+
+## 12. FP&A (Planejamento Financeiro)
+
+Aba nova **"FP&A"** que transforma a tabela `dre_cliente` (§4.12) — até então
+apenas destino passivo de carga, sem endpoint que a lesse ou escrevesse — em
+uma grade editável de planejamento financeiro por cliente. É a primeira
+funcionalidade da aplicação que **grava** em `dre_cliente` (via a rota de
+upsert descrita em §12.2), não só a alimentação pelo processo `atualizar-dre`.
+
+Escopo dos dados: 3 das 7 métricas de `dre_cliente` — as constantes
+`FPA_METRICAS = ["Receita Bruta", "Receita Líquida", "Margem Bruta %"]` — ao
+longo das 12 competências de 2026 (`FPA_MESES = ["2026-01", …, "2026-12"]`).
+
+### 12.1 Gate de acesso (temporário, single-user)
+
+O acesso é liberado para **um único usuário** —
+`FPA_EMAIL_PERMITIDO = "marcos.andersen@sysmanager.com.br"` — enquanto a
+feature está em prototipagem (pedido explícito). **Não** é um papel novo nem
+uma flag nova no modelo de permissões (§6.3): não há coluna em `pessoas`, não
+entra no cálculo de `acesso_full`/RBAC. É deliberadamente um gate provisório
+por comparação direta de email, a ser substituído por um controle próprio se a
+feature for adiante.
+
+- **Backend**: helper `_require_acesso_fpa(pessoa)` levanta `HTTPException(403,
+  "Acesso restrito")` se `pessoa["email"] != FPA_EMAIL_PERMITIDO`. É chamado no
+  início de **ambos** os endpoints de FP&A — o gate é server-side de verdade,
+  não apenas cosmético no frontend.
+- **Frontend**: `mostrarApp()` faz
+  `document.getElementById("tab-fpa").classList.toggle("hidden",
+  session.pessoa.email !== "marcos.andersen@sysmanager.com.br")` — a aba
+  `#tab-fpa` fica escondida para todo mundo, exceto esse email.
+- **Suporte**: para o check client-side funcionar, as respostas de
+  `POST /api/auth/login` e `GET /api/auth/me` foram estendidas para incluir o
+  campo `email` no objeto `pessoa` (antes não expunham o email da sessão).
+
+### 12.2 Endpoints
+
+Ambos sob `Authorization: Bearer <token>` + `_require_acesso_fpa`.
+
+| Método | Rota | Descrição |
+|---|---|---|
+| GET | `/api/fpa/clientes` | grade completa: clientes ativos (agrupáveis por `bu_director`) × 3 métricas × 12 competências |
+| PUT | `/api/fpa/valores` | upsert do `valor_planejado` de uma célula editável |
+
+**`GET /api/fpa/clientes`** — retorna `{meses: FPA_MESES, clientes: [...]}`.
+Cada cliente traz `id`, `nome`, `industry_code`, `bu_director` (`{id, nome}`
+ou `null`), `am` (`{id, nome}` ou `null`), `dms` (lista) e `metricas` — um dict
+`metrica → {competência → {planejado, realizado}}` cobrindo as 3 métricas ×
+12 meses (preenchendo com `{planejado: null, realizado: null}` onde não houver
+linha). Os valores vêm de `dre_cliente` filtrada por
+`metrica = ANY(FPA_METRICAS) AND competencia = ANY(FPA_MESES)`, casada com
+`clientes` **pelo nome** (`dre_cliente.cliente_nome`, chave natural do Power BI
+— ver a ressalva de casamento por nome em §4.12). `industry_code`/`am`/`dms`
+alimentam os filtros da tela (§12.3).
+
+**`PUT /api/fpa/valores`** — corpo `FpaValorIn`
+(`{cliente_nome, metrica, competencia, valor_planejado?}`). Regras:
+
+- `competencia` precisa estar em `FPA_MESES` (senão `400`).
+- `metrica` só pode ser `"Receita Bruta"` ou `"Margem Bruta %"` (senão `400`) —
+  **Receita Líquida nunca é editada diretamente** (é derivada, ver abaixo).
+- **Trava por Realizado (data-driven, não calendário)**: antes de gravar,
+  consulta o `valor_realizado` daquela `(cliente_nome, metrica, competencia)`;
+  se já houver Realizado carregado (`is not None`), recusa com
+  `400 "Este mês já tem valor Realizado carregado — não é mais editável."`. Ou
+  seja, a editabilidade é ditada pela chegada do dado real (via processo
+  `atualizar-dre`), **não** por uma janela fixa de calendário Jun–Dez.
+- **Upsert**: grava `valor_planejado` com `valor_realizado = NULL`, via
+  `INSERT … ON CONFLICT (cliente_nome, metrica, competencia) DO UPDATE SET
+  valor_planejado = EXCLUDED.valor_planejado, atualizado_em = …` (a mesma chave
+  natural de §4.12).
+- **Derivação da Receita Líquida**: quando a métrica gravada é `Receita Bruta`,
+  o endpoint calcula e persiste também `Receita Líquida = round(Receita Bruta *
+  (1 - FPA_ALIQUOTA_IMPOSTO), 2)`, com `FPA_ALIQUOTA_IMPOSTO = 0.0565` (5,65%
+  de imposto). Retorna `receita_liquida_planejada` no corpo para o frontend
+  atualizar a linha correspondente sem novo `GET`.
+- **Auditoria**: registra em `auditoria` uma linha
+  `entidade="dre_cliente"`, `acao="editar_planejado"`, com autor
+  (`pessoa["id"]`/`pessoa["nome"]`) e `detalhes` no formato
+  `"<cliente> / <metrica> / <competencia> = <valor>"`.
+
+### 12.3 Frontend (`renderFpaSecoes`)
+
+`loadFpa()` (disparado pelo clique em `.tab[data-view="fpa"]`) busca
+`/api/fpa/clientes` + `/api/pessoas` em paralelo, popula os filtros
+(`populateFiltrosFpa`) e chama `renderFpaSecoes()`.
+
+- **Layout**: espelha o Painel — uma `<table class="tabela-fpa">` por BU
+  Director (mesmo agrupamento/`bu-section` e cores de diretor). Cada cliente
+  ocupa 3 linhas (as 3 métricas de `FPA_LINHAS`, rotuladas via
+  `FPA_LINHA_LABEL` — "Margem Bruta %" aparece como "Margem %"), com o nome do
+  cliente em `rowspan`. Cabeçalho de 3 níveis: trimestre → mês → sub-colunas
+  `Plan./Real./Var.`.
+- **Variação (`Var.`)**: é **% para as linhas de receita**
+  (`fmtFpaVariacaoPct` = `(real - plan) / |plan| * 100`) e **p.p. para Margem %**
+  (`fmtFpaVariacaoPP` = `real - plan`, sufixo `p.p.`).
+- **Edição inline**: só a célula `Plan.` de `Receita Bruta`/`Margem Bruta %`
+  vira `<input class="fpa-input">` — **e apenas enquanto `realizado` for
+  `null`** (mesma trava do backend refletida na UI). `Receita Líquida` é sempre
+  read-only (`.fpa-static.fpa-disabled`), assim como qualquer célula já com
+  Realizado. `salvarFpaValor(input)` faz o `PUT`, atualiza o `state.fpa` local
+  (inclusive a Receita Líquida derivada devolvida pela resposta) e re-renderiza;
+  em erro, faz rollback do valor anterior e reabilita o input. Parsing de
+  entrada pt-BR (vírgula decimal) via `parseFpaInput`.
+- **Recolher/expandir trimestre**: os `<th class="fpa-trimestre-toggle">` (T1–T4)
+  são clicáveis; o estado vive no `Set` module-level `fpaTrimestresColapsados`.
+  `fpaColunasVisiveis(meses)` transforma a lista de meses em colunas visíveis —
+  um trimestre recolhido colapsa seus 3 meses (9 sub-colunas) em **uma única
+  coluna "···"** (`.fpa-colapsado`), com o toggle mostrando `+`/`−`. Estilos em
+  `styles.css` (`.tabela-fpa`, `.fpa-trimestre-toggle`, `.fpa-colapsado`,
+  `.fpa-mes-divisor`, `.fpa-input`, etc.).
+- **Filtros**: busca por cliente/AM/DM (`#filtro-fpa-busca`), BU Director
+  (`#filtro-fpa-bu-director`) e Industry Code (`#filtro-fpa-industry`) — os
+  mesmos do Painel, aplicados client-side em `renderFpaSecoes`.
