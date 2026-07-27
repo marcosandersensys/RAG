@@ -686,6 +686,30 @@ function fpaColunasVisiveis(meses) {
   return colunas;
 }
 
+// Total FY'26: para Receita Bruta/Líquida soma os 12 meses; para Margem % usa
+// média ponderada pela Receita Líquida (Σ margem%×RL ÷ Σ RL), que é a margem
+// anual correta — média simples de percentuais distorceria.
+function fpaTotalFY(cliente, metrica, campo) {
+  const meses = state.fpa.meses;
+  if (metrica === "Margem Bruta %") {
+    let num = 0, den = 0, algum = false;
+    for (const mes of meses) {
+      const m = fpaValor(cliente, metrica, mes, campo);
+      const rl = fpaValor(cliente, "Receita Líquida", mes, campo);
+      if (m !== null && m !== undefined && rl !== null && rl !== undefined) {
+        num += m * rl; den += rl; algum = true;
+      }
+    }
+    return (!algum || den === 0) ? null : num / den;
+  }
+  let soma = 0, algum = false;
+  for (const mes of meses) {
+    const v = fpaValor(cliente, metrica, mes, campo);
+    if (v !== null && v !== undefined) { soma += v; algum = true; }
+  }
+  return algum ? soma : null;
+}
+
 function renderFpaSecoes() {
   const busca = document.getElementById("filtro-fpa-busca").value.trim().toLowerCase();
   const buDirectorId = document.getElementById("filtro-fpa-bu-director").value;
@@ -695,6 +719,7 @@ function renderFpaSecoes() {
   const container = document.getElementById("fpa-secoes");
   const { meses } = state.fpa;
   const colunas = fpaColunasVisiveis(meses);
+  const mesesFechados = new Set(state.fpa.meses_fechados || []);
 
   const linhas = state.fpa.clientes.filter(c => {
     if (buDirectorId && (!c.bu_director || String(c.bu_director.id) !== buDirectorId)) return false;
@@ -734,12 +759,16 @@ function renderFpaSecoes() {
       : `<th class="fpa-sub${divisor}">Plan.</th><th class="fpa-sub">Real.</th><th class="fpa-sub">Var.</th>`;
   }).join("");
 
+  // Grupo totalizador "Total FY'26" (cabeçalho destacado + valores em negrito)
+  const totalGrupoHeaderHtml = `<th class="fpa-total-header fpa-total-divisor" rowspan="2" colspan="3">Total FY'26</th>`;
+  const totalSubHeaderHtml = `<th class="fpa-sub fpa-total-header fpa-total-divisor">Plan.</th><th class="fpa-sub fpa-total-header">Real.</th><th class="fpa-sub fpa-total-header">Var.</th>`;
+
   const linhaCampo = (cliente, metrica, mes, divisor) => {
     const planejado = fpaValor(cliente, metrica, mes, "planejado");
     const realizado = fpaValor(cliente, metrica, mes, "realizado");
-    // Editável enquanto não houver Realizado carregado para essa competência —
-    // assim que o mês tiver real (via processo atualizar-dre), trava sozinho.
-    const editavel = (realizado === null || realizado === undefined)
+    // Mês fechado (tem Realizado carregado em qualquer cliente) trava a edição
+    // para todos — não depende de haver Realizado nesta célula específica.
+    const editavel = !mesesFechados.has(mes)
       && (metrica === "Receita Bruta" || metrica === "Margem Bruta %");
     const fmtValor = metrica === "Margem Bruta %" ? fmtFpaPercentual : fmtFpaNumero;
     const fmtVariacao = metrica === "Margem Bruta %" ? fmtFpaVariacaoPP : fmtFpaVariacaoPct;
@@ -755,12 +784,24 @@ function renderFpaSecoes() {
     `;
   };
 
+  const totalCelulasHtml = (cliente, metrica) => {
+    const fmtValor = metrica === "Margem Bruta %" ? fmtFpaPercentual : fmtFpaNumero;
+    const fmtVariacao = metrica === "Margem Bruta %" ? fmtFpaVariacaoPP : fmtFpaVariacaoPct;
+    const plan = fpaTotalFY(cliente, metrica, "planejado");
+    const real = fpaTotalFY(cliente, metrica, "realizado");
+    return `
+      <td class="num fpa-total-col fpa-total-divisor"><span class="fpa-static fpa-total-val">${fmtValor(plan)}</span></td>
+      <td class="num fpa-total-col"><span class="fpa-static fpa-total-val">${fmtValor(real)}</span></td>
+      <td class="num fpa-total-col"><span class="fpa-static fpa-total-val fpa-var">${fmtVariacao(real, plan)}</span></td>
+    `;
+  };
+
   const linhaCelulasHtml = (cliente, metrica) => colunas.map((col, i) => {
     const divisor = i > 0 ? " fpa-mes-divisor" : "";
     return col.tipo === "colapsado"
       ? `<td class="fpa-colapsado${divisor}"></td>`
       : linhaCampo(cliente, metrica, col.mes, divisor);
-  }).join("");
+  }).join("") + totalCelulasHtml(cliente, metrica);
 
   container.innerHTML = diretores.map((dir, idx) => {
     const clientesDoDir = linhas.filter(c => c.bu_director && c.bu_director.id === dir.id);
@@ -781,9 +822,10 @@ function renderFpaSecoes() {
                   <th rowspan="3" class="fpa-col-cliente">Cliente</th>
                   <th rowspan="3" class="fpa-col-linha">Linha</th>
                   ${grupoHeaderHtml}
+                  ${totalGrupoHeaderHtml}
                 </tr>
                 <tr>${mesHeaderHtml}</tr>
-                <tr class="fpa-sub-row">${subHeaderHtml}</tr>
+                <tr class="fpa-sub-row">${subHeaderHtml}${totalSubHeaderHtml}</tr>
               </thead>
               <tbody>
                 ${clientesDoDir.map(cliente => `

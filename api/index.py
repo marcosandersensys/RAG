@@ -875,6 +875,15 @@ def fpa_clientes(pessoa: dict = Depends(get_current_pessoa)):
            WHERE metrica = ANY(?) AND competencia = ANY(?)""",
         (FPA_METRICAS, FPA_MESES),
     ).fetchall()
+    # Um mês é "fechado" (não editável para NENHUM cliente) assim que qualquer
+    # linha dele tiver Realizado carregado — a competência inteira trava, mesmo
+    # para clientes sem movimento naquele mês.
+    fechados = conn.execute(
+        """SELECT DISTINCT competencia FROM dre_cliente
+           WHERE valor_realizado IS NOT NULL AND competencia = ANY(?)""",
+        (FPA_MESES,),
+    ).fetchall()
+    meses_fechados = sorted(r["competencia"] for r in fechados)
     dms_por_cliente = _all_dms(conn)
     conn.close()
 
@@ -905,7 +914,7 @@ def fpa_clientes(pessoa: dict = Depends(get_current_pessoa)):
             "metricas": metricas,
         })
 
-    return {"meses": FPA_MESES, "clientes": resultado}
+    return {"meses": FPA_MESES, "meses_fechados": meses_fechados, "clientes": resultado}
 
 
 @app.put("/api/fpa/valores")
@@ -919,16 +928,16 @@ def fpa_atualizar_valor(payload: FpaValorIn, pessoa: dict = Depends(get_current_
     conn = get_conn()
     ts = now_iso()
 
-    # Editável só enquanto não houver Realizado carregado para essa competência —
-    # assim que o processo atualizar-dre trouxer o real de um mês, ele trava
-    # automaticamente (não depende de um calendário fixo Jun-Dez).
-    existente = conn.execute(
-        "SELECT valor_realizado FROM dre_cliente WHERE cliente_nome=? AND metrica=? AND competencia=?",
-        (payload.cliente_nome, payload.metrica, payload.competencia),
+    # Mês fechado = qualquer linha da competência já tem Realizado. Trava a
+    # competência inteira para todos os clientes (não depende de calendário fixo
+    # nem de haver Realizado nessa célula específica).
+    fechado = conn.execute(
+        "SELECT 1 FROM dre_cliente WHERE competencia=? AND valor_realizado IS NOT NULL LIMIT 1",
+        (payload.competencia,),
     ).fetchone()
-    if existente and existente["valor_realizado"] is not None:
+    if fechado:
         conn.close()
-        raise HTTPException(400, "Este mês já tem valor Realizado carregado — não é mais editável.")
+        raise HTTPException(400, "Mês já fechado (Realizado carregado) — não é mais editável.")
 
     def upsert(metrica: str, valor: Optional[float]):
         conn.execute(

@@ -399,3 +399,8 @@ tr.risco-atrasado:hover td{background:rgba(220,38,38,.09)}
 .fpa-input{width:68px;text-align:right;font-variant-numeric:tabular-nums;font-family:var(--font-body);font-size:10.5px;border:1px solid var(--border-subtle);border-radius:4px;padding:3px 5px;background:#fff}
 .fpa-input:focus{outline:none;border-color:var(--sys-blue);box-shadow:0 0 0 2px rgba(16,89,175,.12)}
 .fpa-input:disabled{background:var(--bg-page);color:var(--text-muted)}
+.tabela-fpa .fpa-total-header{background:var(--sys-purple)}
+.fpa-total-divisor{border-left:2px solid var(--sys-purple)}
+.tabela-fpa td.fpa-total-col{background:rgba(102,59,138,.06)}
+.fpa-total-val{font-weight:700;color:var(--text-primary)}
+.fpa-total-col .fpa-var.fpa-total-val{color:var(--text-muted)}
