@@ -33,6 +33,50 @@
     <input type="password" id="login-senha" placeholder="Sua senha" autocomplete="current-password">
     <div class="modal-error hidden" id="login-erro"></div>
     <button class="btn-primary auth-submit" id="login-entrar">Entrar</button>
+    <button class="link-btn auth-forgot" id="login-esqueci">Esqueci minha senha</button>
+  </div>
+</div>
+
+<!-- ESQUECI MINHA SENHA (solicitar link por e-mail) -->
+<div class="modal-overlay" id="modal-esqueci">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Esqueci minha senha</h3>
+      <button class="modal-close" data-close-modal="modal-esqueci">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="hint">Informe o seu e-mail SysManager. Se estiver cadastrado, enviaremos um link para redefinir a senha (válido por 60 minutos).</p>
+      <label>Email SysManager</label>
+      <input type="email" id="esq-email" placeholder="nome.sobrenome@sysmanager.com.br" autocomplete="username">
+      <div class="modal-error hidden" id="esq-erro"></div>
+      <div class="modal-ok hidden" id="esq-ok"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" data-close-modal="modal-esqueci">Fechar</button>
+      <button class="btn-primary" id="esq-enviar">Enviar link</button>
+    </div>
+  </div>
+</div>
+
+<!-- REDEFINIR SENHA (via link de e-mail, token na URL) -->
+<div class="modal-overlay" id="modal-redefinir">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Redefinir senha</h3>
+    </div>
+    <div class="modal-body">
+      <p class="hint">Defina a sua nova senha de acesso ao RAG Status.</p>
+      <label>Nova senha</label>
+      <input type="password" id="rd-senha-nova" autocomplete="new-password">
+      <label>Confirmar nova senha</label>
+      <input type="password" id="rd-senha-confirmar" autocomplete="new-password">
+      <p class="hint">Mínimo 10 caracteres, com letra maiúscula, minúscula, número e caractere especial.</p>
+      <div class="modal-error hidden" id="rd-erro"></div>
+      <div class="modal-ok hidden" id="rd-ok"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-primary" id="rd-salvar">Salvar nova senha</button>
+    </div>
   </div>
 </div>
 

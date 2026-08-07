@@ -62,6 +62,8 @@ SCORE_CORTE_A = 50
 
 SENHA_PADRAO = "SysManager@2026"
 SESSAO_DIAS = 7
+APP_BASE_URL = os.environ.get("APP_BASE_URL", "https://rag-status.vercel.app").rstrip("/")
+RESET_TOKEN_TTL_MIN = 60  # validade do link de redefinição de senha (minutos)
 
 # FP&A: grade de planejamento financeiro por cliente (Receita Bruta/Líquida/Margem %)
 FPA_METRICAS = ["Receita Bruta", "Receita Líquida", "Margem Bruta %"]
@@ -156,6 +158,17 @@ CREATE TABLE IF NOT EXISTS sessoes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessoes_expira ON sessoes(expira_em);
+
+CREATE TABLE IF NOT EXISTS reset_tokens (
+    id SERIAL PRIMARY KEY,
+    pessoa_id INTEGER NOT NULL REFERENCES pessoas(id),
+    token_hash TEXT NOT NULL,
+    expira_em TEXT NOT NULL,
+    usado INTEGER NOT NULL DEFAULT 0,
+    criado_em TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_reset_tokens_hash ON reset_tokens(token_hash);
 
 CREATE TABLE IF NOT EXISTS auditoria (
     id SERIAL PRIMARY KEY,
@@ -349,14 +362,20 @@ def _garantir_acesso_cliente(conn, pessoa: dict, cliente_id: int):
         raise HTTPException(403, "Sem acesso a este cliente")
 
 
-# FP&A: feature nova em prototipagem, liberada só para um usuário por enquanto
-# (pedido explícito do usuário) — não é um papel/flag novo no modelo de permissões.
-FPA_EMAIL_PERMITIDO = "marcos.andersen@sysmanager.com.br"
+# Dono do produto: features/áreas liberadas só para um usuário por enquanto
+# (pedido explícito) — FP&A, DRE e a Auditoria do Admin. Não é um papel/flag
+# novo no modelo de permissões, é um gate por e-mail único.
+EMAIL_DONO = "marcos.andersen@sysmanager.com.br"
+FPA_EMAIL_PERMITIDO = EMAIL_DONO  # retrocompatível
+
+
+def _require_dono(pessoa: dict):
+    if pessoa.get("email") != EMAIL_DONO:
+        raise HTTPException(403, "Acesso restrito")
 
 
 def _require_acesso_fpa(pessoa: dict):
-    if pessoa["email"] != FPA_EMAIL_PERMITIDO:
-        raise HTTPException(403, "Acesso restrito")
+    _require_dono(pessoa)
 
 
 @asynccontextmanager
@@ -457,6 +476,15 @@ class LoginIn(BaseModel):
 
 class TrocarSenhaIn(BaseModel):
     senha_atual: str
+    senha_nova: str
+
+
+class EsqueciSenhaIn(BaseModel):
+    email: str
+
+
+class RedefinirSenhaIn(BaseModel):
+    token: str
     senha_nova: str
 
 
@@ -735,6 +763,87 @@ def trocar_senha(payload: TrocarSenhaIn, pessoa: dict = Depends(get_current_pess
     _log_auditoria(conn, pessoa, "pessoa", pessoa["id"], "trocar_senha", "Senha alterada pelo próprio usuário")
     conn.commit()
     conn.close()
+    return {"ok": True}
+
+
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+@app.post("/api/auth/esqueci-senha")
+def esqueci_senha(payload: EsqueciSenhaIn):
+    """Solicita redefinição de senha por e-mail. Resposta genérica sempre (não
+    revela se o e-mail existe — anti-enumeração). Gera token de uso único com
+    validade curta e envia um link de redefinição."""
+    email = (payload.email or "").strip().lower()
+    generico = {"ok": True, "message": "Se o e-mail estiver cadastrado, enviaremos um link de redefinição."}
+    if not email:
+        return generico
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT id, nome, email, ativo FROM pessoas WHERE email=?", (email,)
+        ).fetchone()
+        if not row or not row["ativo"]:
+            return generico
+        # Invalida tokens anteriores ainda válidos desta pessoa
+        conn.execute("UPDATE reset_tokens SET usado=1 WHERE pessoa_id=? AND usado=0", (row["id"],))
+        token = secrets.token_urlsafe(32)
+        expira = (datetime.now() + timedelta(minutes=RESET_TOKEN_TTL_MIN)).isoformat(timespec="seconds")
+        conn.execute(
+            "INSERT INTO reset_tokens (pessoa_id, token_hash, expira_em, usado, criado_em) VALUES (?, ?, ?, 0, ?)",
+            (row["id"], _hash_token(token), expira, now_iso()),
+        )
+        conn.execute(
+            """INSERT INTO auditoria (entidade, entidade_id, acao, pessoa_id, pessoa_nome, detalhes, criado_em)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            ("pessoa", row["id"], "solicitar_reset", None, "Sistema (esqueci-senha)",
+             f"Link de redefinição solicitado para '{row['nome']}'", now_iso()),
+        )
+        conn.commit()
+        link = f"{APP_BASE_URL}/?reset={token}"
+        html = _html_reset_senha(row["nome"], link)
+        try:
+            _enviar_email_resend("RAG Status — Redefinição de senha", html, to=row["email"])
+        except Exception:
+            # Não vaza existência do e-mail nem quebra o fluxo se o envio falhar.
+            pass
+    finally:
+        conn.close()
+    return generico
+
+
+@app.post("/api/auth/redefinir-senha")
+def redefinir_senha(payload: RedefinirSenhaIn):
+    token = (payload.token or "").strip()
+    if not token:
+        raise HTTPException(400, "Link inválido ou expirado.")
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            """SELECT rt.id, rt.pessoa_id, p.nome
+               FROM reset_tokens rt JOIN pessoas p ON p.id = rt.pessoa_id
+               WHERE rt.token_hash=? AND rt.usado=0 AND rt.expira_em > ? AND p.ativo=1""",
+            (_hash_token(token), now_iso()),
+        ).fetchone()
+        if not row:
+            raise HTTPException(400, "Link inválido ou expirado. Solicite um novo.")
+        _validar_senha_forte(payload.senha_nova)
+        conn.execute(
+            "UPDATE pessoas SET senha_hash=?, precisa_trocar_senha=0 WHERE id=?",
+            (_hash_senha(payload.senha_nova), row["pessoa_id"]),
+        )
+        conn.execute("UPDATE reset_tokens SET usado=1 WHERE id=?", (row["id"],))
+        conn.execute("DELETE FROM sessoes WHERE pessoa_id=?", (row["pessoa_id"],))
+        conn.execute(
+            """INSERT INTO auditoria (entidade, entidade_id, acao, pessoa_id, pessoa_nome, detalhes, criado_em)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            ("pessoa", row["pessoa_id"], "redefinir_senha", None, "Sistema (redefinir-senha)",
+             f"Senha de '{row['nome']}' redefinida via link de e-mail", now_iso()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
     return {"ok": True}
 
 
@@ -1352,7 +1461,7 @@ def editar_criterio(criterio_id: int, payload: CriterioUpdate, pessoa: dict = De
 @app.get("/api/auditoria")
 def listar_auditoria(entidade: Optional[str] = None, busca: Optional[str] = None,
                       limit: int = 200, pessoa: dict = Depends(get_current_pessoa)):
-    _require_admin(pessoa)
+    _require_dono(pessoa)
     limit = min(max(limit, 1), 500)
     conn = get_conn()
     query = "SELECT * FROM auditoria WHERE 1=1"
@@ -1401,15 +1510,21 @@ def resumo(pessoa: dict = Depends(get_current_pessoa)):
     wow = None
     if ids is None:
         data_passada = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+        # Snapshot mais recente ATÉ 7 dias atrás — tolerante a dias sem cron
+        # (evita "— vs sem. passada" silencioso quando falta o snapshot exato).
         snapshot = conn.execute(
-            "SELECT * FROM metricas_diarias WHERE data=?", (data_passada,)
+            "SELECT * FROM metricas_diarias WHERE data<=? ORDER BY data DESC LIMIT 1",
+            (data_passada,),
         ).fetchone()
         if snapshot:
+            # Variação semana-a-semana em DELTA ABSOLUTO (contagens pequenas: o %
+            # é enganoso — ex.: 0→4 não é "+100%"). Cada métrica é "ruim quando sobe".
             wow = {
-                "clientes_rag_r": _variacao_pct(metricas["clientes_rag_r"], snapshot["clientes_rag_r"]),
-                "clientes_rag_a": _variacao_pct(metricas["clientes_rag_a"], snapshot["clientes_rag_a"]),
-                "riscos_abertos": _variacao_pct(metricas["riscos_abertos"], snapshot["riscos_abertos"]),
-                "riscos_atrasados": _variacao_pct(metricas["riscos_atrasados"], snapshot["riscos_atrasados"]),
+                "base_data": snapshot["data"],
+                "clientes_rag_r": metricas["clientes_rag_r"] - snapshot["clientes_rag_r"],
+                "clientes_rag_a": metricas["clientes_rag_a"] - snapshot["clientes_rag_a"],
+                "riscos_abertos": metricas["riscos_abertos"] - snapshot["riscos_abertos"],
+                "riscos_atrasados": metricas["riscos_atrasados"] - snapshot["riscos_atrasados"],
             }
     conn.close()
 
@@ -1433,14 +1548,15 @@ def resumo(pessoa: dict = Depends(get_current_pessoa)):
 
 # ---------- Resumo diário por email (cron) ----------
 
-def _enviar_email_resend(assunto: str, html: str) -> None:
+def _enviar_email_resend(assunto: str, html: str, to: Optional[str] = None) -> None:
     api_key = os.environ.get("RESEND_API_KEY")
     if not api_key:
         raise HTTPException(500, "RESEND_API_KEY não configurada")
     remetente = os.environ.get("RESEND_FROM_EMAIL", "RAG Status <onboarding@resend.dev>")
+    destinatario = to or DIGEST_EMAIL_TO
     payload = json.dumps({
         "from": remetente,
-        "to": [DIGEST_EMAIL_TO],
+        "to": [destinatario],
         "subject": assunto,
         "html": html,
     }).encode("utf-8")
@@ -1460,6 +1576,32 @@ def _enviar_email_resend(assunto: str, html: str) -> None:
     except urllib.error.HTTPError as e:
         detalhe = e.read().decode("utf-8", errors="replace")
         raise HTTPException(502, f"Falha ao enviar email via Resend ({e.code}): {detalhe}")
+
+
+def esc_html(s: str) -> str:
+    return (str(s or "").replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+def _html_reset_senha(nome: str, link: str) -> str:
+    return f"""
+    <div style="font-family:Arial,Helvetica,sans-serif;max-width:520px;margin:0 auto;color:#0f172a;">
+      <div style="background:#041830;color:#fff;padding:18px 22px;border-radius:10px 10px 0 0;">
+        <strong style="font-size:16px;">RAG Status · Gestão Executiva</strong>
+      </div>
+      <div style="border:1px solid #E5E7EB;border-top:none;border-radius:0 0 10px 10px;padding:22px;">
+        <p style="font-size:14px;">Olá, {esc_html(nome)}.</p>
+        <p style="font-size:14px;">Recebemos uma solicitação para redefinir a sua senha de acesso ao RAG Status.
+        Clique no botão abaixo para definir uma nova senha. Este link expira em {RESET_TOKEN_TTL_MIN} minutos e só pode ser usado uma vez.</p>
+        <p style="text-align:center;margin:26px 0;">
+          <a href="{link}" style="background:#0066B3;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-size:14px;font-weight:bold;display:inline-block;">Redefinir minha senha</a>
+        </p>
+        <p style="font-size:12px;color:#64748b;">Se o botão não funcionar, copie e cole este endereço no navegador:<br>
+          <span style="word-break:break-all;">{esc_html(link)}</span></p>
+        <p style="font-size:12px;color:#64748b;margin-top:18px;">Se você não solicitou esta redefinição, ignore este e-mail — sua senha permanece inalterada.</p>
+      </div>
+    </div>
+    """
 
 
 def _linha_html(cols: List[str]) -> str:

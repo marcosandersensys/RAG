@@ -132,7 +132,7 @@ document.querySelector('.tab[data-view="admin"]').addEventListener("click", () =
   loadAdminPessoas();
   loadAdminClientesTable();
   loadCriterios();
-  loadAuditoria();
+  if (isDono()) loadAuditoria();
 });
 document.querySelector('.tab[data-view="ajuda"]').addEventListener("click", carregarAjuda);
 document.querySelector('.tab[data-view="fpa"]').addEventListener("click", loadFpa);
@@ -204,16 +204,27 @@ function mostrarLogin() {
   document.getElementById("login-senha").value = "";
 }
 
+const EMAIL_DONO = "marcos.andersen@sysmanager.com.br";
+function isDono() { return session.pessoa && session.pessoa.email === EMAIL_DONO; }
+
 function mostrarApp() {
   document.getElementById("view-login").classList.add("hidden");
   document.getElementById("app-shell").classList.remove("hidden");
   document.getElementById("topbar-user-nome").textContent = session.pessoa.nome;
   const temAcessoFull = session.pessoa.papel === "admin" || session.pessoa.acesso_full;
   document.getElementById("tab-admin").classList.toggle("hidden", !temAcessoFull);
-  // FP&A e DRE: em prototipagem, liberados só para um usuário por enquanto (pedido explícito).
-  const soDono = session.pessoa.email !== "marcos.andersen@sysmanager.com.br";
+  // FP&A, DRE e a Auditoria do Admin: liberados só para o dono por enquanto (pedido explícito).
+  const soDono = !isDono();
   document.getElementById("tab-fpa").classList.toggle("hidden", soDono);
   document.getElementById("tab-dre").classList.toggle("hidden", soDono);
+  const btnAud = document.querySelector('#view-admin > .subtabs [data-admin-view="auditoria"]');
+  if (btnAud) {
+    btnAud.classList.toggle("hidden", soDono);
+    // Se um não-dono estava com Auditoria ativa, volta para Pessoas.
+    if (soDono && btnAud.classList.contains("active")) {
+      document.querySelector('#view-admin > .subtabs [data-admin-view="pessoas"]').click();
+    }
+  }
   renderModeloPontuacao();
 }
 
@@ -316,6 +327,100 @@ document.getElementById("btn-logout").addEventListener("click", fazerLogout);
 document.getElementById("btn-trocar-senha").addEventListener("click", () => mostrarTrocarSenha(false));
 document.getElementById("ts-salvar").addEventListener("click", submeterTrocaSenha);
 
+// ---------- Esqueci minha senha ----------
+
+async function solicitarResetSenha() {
+  const email = document.getElementById("esq-email").value.trim();
+  const erroEl = document.getElementById("esq-erro");
+  const okEl = document.getElementById("esq-ok");
+  erroEl.classList.add("hidden");
+  okEl.classList.add("hidden");
+  if (!email) {
+    erroEl.textContent = "Informe o seu e-mail.";
+    erroEl.classList.remove("hidden");
+    return;
+  }
+  const btn = document.getElementById("esq-enviar");
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/auth/esqueci-senha", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json().catch(() => ({}));
+    okEl.textContent = data.message || "Se o e-mail estiver cadastrado, enviaremos um link de redefinição.";
+    okEl.classList.remove("hidden");
+  } catch (e) {
+    erroEl.textContent = "Não foi possível processar a solicitação. Tente novamente.";
+    erroEl.classList.remove("hidden");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.getElementById("login-esqueci").addEventListener("click", () => {
+  document.getElementById("esq-email").value = document.getElementById("login-email").value.trim();
+  document.getElementById("esq-erro").classList.add("hidden");
+  document.getElementById("esq-ok").classList.add("hidden");
+  openModal("modal-esqueci");
+});
+document.getElementById("esq-enviar").addEventListener("click", solicitarResetSenha);
+document.getElementById("esq-email").addEventListener("keydown", (e) => { if (e.key === "Enter") solicitarResetSenha(); });
+
+// ---------- Redefinir senha (via link/token na URL) ----------
+
+async function submeterRedefinicao(token) {
+  const nova = document.getElementById("rd-senha-nova").value;
+  const confirmar = document.getElementById("rd-senha-confirmar").value;
+  const erroEl = document.getElementById("rd-erro");
+  const okEl = document.getElementById("rd-ok");
+  erroEl.classList.add("hidden");
+  okEl.classList.add("hidden");
+  if (!nova || !confirmar) {
+    erroEl.textContent = "Preencha os dois campos.";
+    erroEl.classList.remove("hidden");
+    return;
+  }
+  if (nova !== confirmar) {
+    erroEl.textContent = "A confirmação não confere com a nova senha.";
+    erroEl.classList.remove("hidden");
+    return;
+  }
+  try {
+    const res = await fetch("/api/auth/redefinir-senha", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, senha_nova: nova }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error((body.detail && body.detail.message) || body.detail || "Não foi possível redefinir a senha.");
+    }
+    okEl.textContent = "Senha redefinida com sucesso. Você já pode entrar com a nova senha.";
+    okEl.classList.remove("hidden");
+    // Limpa o token da URL e volta ao login após um instante.
+    setTimeout(() => {
+      history.replaceState(null, "", location.pathname);
+      closeModal("modal-redefinir");
+      mostrarLogin();
+    }, 1800);
+  } catch (e) {
+    erroEl.textContent = e.message;
+    erroEl.classList.remove("hidden");
+  }
+}
+
+function iniciarRedefinicaoSeTokenPresente() {
+  const token = new URLSearchParams(location.search).get("reset");
+  if (!token) return false;
+  document.getElementById("app-shell").classList.add("hidden");
+  document.getElementById("view-login").classList.remove("hidden");
+  openModal("modal-redefinir");
+  document.getElementById("rd-salvar").onclick = () => submeterRedefinicao(token);
+  return true;
+}
+
 // ---------- load & render: PAINEL ----------
 
 async function loadPainel() {
@@ -331,12 +436,15 @@ async function loadPainel() {
   renderPainelSecoes();
 }
 
-function wowHtml(pct) {
-  if (pct === null || pct === undefined) return `<div class="wow wow-flat">— vs sem. passada</div>`;
-  if (pct === 0) return `<div class="wow wow-flat">= vs sem. passada</div>`;
-  const seta = pct > 0 ? "▲" : "▼";
-  const classe = pct > 0 ? "wow-up" : "wow-down";
-  return `<div class="wow ${classe}">${seta} ${Math.abs(pct)}% vs sem. passada</div>`;
+// Variação semana-a-semana em DELTA ABSOLUTO de contagem (não %: 0→4 não é "+100%").
+// Todas as métricas do topo são "ruins quando sobem" → alta = vermelho, queda = verde.
+function wowHtml(delta) {
+  if (delta === null || delta === undefined) return `<div class="wow wow-flat">— vs sem. passada</div>`;
+  if (delta === 0) return `<div class="wow wow-flat">= vs sem. passada</div>`;
+  const seta = delta > 0 ? "▲" : "▼";
+  const classe = delta > 0 ? "wow-up" : "wow-down";
+  const sinal = delta > 0 ? "+" : "−";
+  return `<div class="wow ${classe}">${seta} ${sinal}${Math.abs(delta)} vs sem. passada</div>`;
 }
 
 function renderResumoCards(resumo) {
@@ -2015,6 +2123,9 @@ function setPeriodo() {
 async function init() {
   setPeriodo();
   populaFiltroPilarRiscos();
+
+  // Fluxo de redefinição via link de e-mail tem precedência (token na URL).
+  if (iniciarRedefinicaoSeTokenPresente()) return;
 
   if (!session.token) {
     mostrarLogin();
