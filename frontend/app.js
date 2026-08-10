@@ -438,13 +438,28 @@ async function loadPainel() {
 
 // Variação semana-a-semana em DELTA ABSOLUTO de contagem (não %: 0→4 não é "+100%").
 // Todas as métricas do topo são "ruins quando sobem" → alta = vermelho, queda = verde.
-function wowHtml(delta) {
-  if (delta === null || delta === undefined) return `<div class="wow wow-flat">— vs sem. passada</div>`;
-  if (delta === 0) return `<div class="wow wow-flat">= vs sem. passada</div>`;
+// `atual` e `baseData` alimentam o tooltip com a comparação real (base → atual),
+// para que o estado "estável" não seja lido como "sem informação".
+function fmtDataCurta(iso) {
+  if (!iso) return "";
+  const [a, m, d] = iso.split("-");
+  return d && m ? `${d}/${m}` : iso;
+}
+function wowHtml(delta, atual, baseData) {
+  if (delta === null || delta === undefined) {
+    return `<div class="wow wow-flat" title="Ainda não há snapshot de 7 dias atrás para comparar.">— sem base semana passada</div>`;
+  }
+  const base = fmtDataCurta(baseData);
+  if (delta === 0) {
+    const tip = base ? `Base ${base}: ${atual} → ${atual} (sem variação)` : "Sem variação na semana";
+    return `<div class="wow wow-flat" title="${tip}">estável vs sem. passada</div>`;
+  }
+  const anterior = atual - delta;
   const seta = delta > 0 ? "▲" : "▼";
   const classe = delta > 0 ? "wow-up" : "wow-down";
   const sinal = delta > 0 ? "+" : "−";
-  return `<div class="wow ${classe}">${seta} ${sinal}${Math.abs(delta)} vs sem. passada</div>`;
+  const tip = base ? `Base ${base}: ${anterior} → ${atual}` : `Semana passada: ${anterior}`;
+  return `<div class="wow ${classe}" title="${tip}">${seta} ${sinal}${Math.abs(delta)} vs sem. passada</div>`;
 }
 
 function renderResumoCards(resumo) {
@@ -453,16 +468,16 @@ function renderResumoCards(resumo) {
   el.innerHTML = `
     <div class="summary-card"><div class="num">${resumo.total_clientes}</div><div class="label">Clientes ativos</div></div>
     <div class="summary-card ${resumo.clientes_rag_r > 0 ? "alert" : ""}">
-      <div class="num">${resumo.clientes_rag_r}</div><div class="label">Clientes RAG Geral = R</div>${wowHtml(wow.clientes_rag_r)}
+      <div class="num">${resumo.clientes_rag_r}</div><div class="label">Clientes RAG Geral = R</div>${wowHtml(wow.clientes_rag_r, resumo.clientes_rag_r, wow.base_data)}
     </div>
     <div class="summary-card ${resumo.clientes_rag_a > 0 ? "alert" : ""}">
-      <div class="num">${resumo.clientes_rag_a}</div><div class="label">Clientes RAG Geral = A</div>${wowHtml(wow.clientes_rag_a)}
+      <div class="num">${resumo.clientes_rag_a}</div><div class="label">Clientes RAG Geral = A</div>${wowHtml(wow.clientes_rag_a, resumo.clientes_rag_a, wow.base_data)}
     </div>
     <div class="summary-card ${resumo.riscos_abertos > 0 ? "alert" : ""}">
-      <div class="num">${resumo.riscos_abertos}</div><div class="label">Riscos/Problemas em aberto</div>${wowHtml(wow.riscos_abertos)}
+      <div class="num">${resumo.riscos_abertos}</div><div class="label">Riscos/Problemas em aberto</div>${wowHtml(wow.riscos_abertos, resumo.riscos_abertos, wow.base_data)}
     </div>
     <div class="summary-card ${resumo.riscos_atrasados > 0 ? "alert" : ""}">
-      <div class="num">${resumo.riscos_atrasados}</div><div class="label">Riscos/Problemas atrasados</div>${wowHtml(wow.riscos_atrasados)}
+      <div class="num">${resumo.riscos_atrasados}</div><div class="label">Riscos/Problemas atrasados</div>${wowHtml(wow.riscos_atrasados, resumo.riscos_atrasados, wow.base_data)}
     </div>
   `;
 }
