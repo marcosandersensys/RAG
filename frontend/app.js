@@ -95,7 +95,7 @@ function fmtDataCurta(iso) {
   const yy = pad(d.getFullYear() % 100);
   const hh = pad(d.getHours());
   const min = pad(d.getMinutes());
-  return `${dd}/${mm}/${yy} ${hh}:${min}`;
+  return `${dd}/${mm}/${yy}<br>${hh}:${min}`;
 }
 
 function fmtDataLonga(iso) {
