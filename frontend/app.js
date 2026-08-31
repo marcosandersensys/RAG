@@ -89,7 +89,13 @@ function fmtData(iso) {
 function fmtDataCurta(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
-  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+  const pad = n => String(n).padStart(2, "0");
+  const dd = pad(d.getDate());
+  const mm = pad(d.getMonth() + 1);
+  const yy = pad(d.getFullYear() % 100);
+  const hh = pad(d.getHours());
+  const min = pad(d.getMinutes());
+  return `${dd}/${mm}/${yy} ${hh}:${min}`;
 }
 
 function fmtDataLonga(iso) {
@@ -440,7 +446,7 @@ async function loadPainel() {
 // Todas as métricas do topo são "ruins quando sobem" → alta = vermelho, queda = verde.
 // `atual` e `baseData` alimentam o tooltip com a comparação real (base → atual),
 // para que o estado "estável" não seja lido como "sem informação".
-function fmtDataCurta(iso) {
+function fmtDataCurtaSemana(iso) {
   if (!iso) return "";
   const [a, m, d] = iso.split("-");
   return d && m ? `${d}/${m}` : iso;
@@ -449,7 +455,7 @@ function wowHtml(delta, atual, baseData) {
   if (delta === null || delta === undefined) {
     return `<div class="wow wow-flat" title="Ainda não há snapshot de 7 dias atrás para comparar.">— sem base semana passada</div>`;
   }
-  const base = fmtDataCurta(baseData);
+  const base = fmtDataCurtaSemana(baseData);
   if (delta === 0) {
     const tip = base ? `Base ${base}: ${atual} → ${atual} (sem variação)` : "Sem variação na semana";
     return `<div class="wow wow-flat" title="${tip}">estável vs sem. passada</div>`;
