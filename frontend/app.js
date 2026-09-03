@@ -1067,12 +1067,21 @@ async function openStatusModal(clienteId, pilar) {
       lista.innerHTML = "";
     } else {
       wrap.classList.remove("hidden");
+      // Mantém os riscos já carregados em outras telas e adiciona/atualiza estes,
+      // para que abrirEditarRisco() encontre o item por id mesmo sem passar por Riscos & Problemas.
+      abertos.forEach(r => {
+        const idx = state.riscos.findIndex(x => x.id === r.id);
+        if (idx >= 0) state.riscos[idx] = r; else state.riscos.push(r);
+      });
       lista.innerHTML = abertos.map(r => `
-        <div class="risco-existente-item">
+        <div class="risco-existente-item historico-item-clicavel" data-ms-risco-id="${r.id}" title="Ver / editar detalhes">
           <span class="badge tipo-${r.tipo}">${r.tipo}</span>
           <strong>${esc(r.titulo)}</strong> — <span class="badge sev-${r.severidade}">${r.severidade}</span>
         </div>
       `).join("");
+      lista.querySelectorAll("[data-ms-risco-id]").forEach(el => {
+        el.addEventListener("click", () => abrirEditarRisco(Number(el.dataset.msRiscoId)));
+      });
     }
   });
 
