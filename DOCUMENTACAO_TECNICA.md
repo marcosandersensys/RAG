@@ -3,7 +3,12 @@
 **Sistema:** RAG Status — Gestão Executiva de Clientes/Contratos (SysManager)
 **Repositório:** https://github.com/marcosandersensys/RAG
 **Produção:** https://rag-status.vercel.app
-**Última atualização deste documento:** 2026-07-24
+**Última atualização deste documento:** 2026-09-09
+
+> **Assumindo a manutenção deste sistema?** Comece pela §13 (Acessos e
+> Ambientes — Handover do Mantenedor) para saber onde tudo está hospedado e
+> como pedir acesso a cada ambiente (GitHub, Vercel, banco, email). O resto
+> do documento é a referência técnica completa (arquitetura, dados, API).
 
 ---
 
@@ -1088,3 +1093,142 @@ alimentam os filtros da tela (§12.3).
 - **Filtros**: busca por cliente/AM/DM (`#filtro-fpa-busca`), BU Director
   (`#filtro-fpa-bu-director`) e Industry Code (`#filtro-fpa-industry`) — os
   mesmos do Painel, aplicados client-side em `renderFpaSecoes`.
+
+---
+
+## 13. Acessos e Ambientes — Handover do Mantenedor
+
+Esta seção existe para quem está **assumindo a manutenção** do sistema e
+precisa saber, de forma prática, onde cada peça está hospedada e como pedir
+acesso. Há duas camadas de acesso completamente independentes, que costumam
+ser confundidas:
+
+1. **Acesso de infraestrutura** (GitHub, Vercel, banco, email) — necessário
+   para alterar código, configuração, variáveis de ambiente ou fazer deploy.
+   É o assunto desta seção.
+2. **Acesso à aplicação em si** (login dentro do RAG Status) — necessário só
+   para *usar* o sistema como usuário final. Ver §13.5.
+
+Proprietário atual de todas as contas de infraestrutura abaixo (GitHub,
+Vercel e, presumivelmente, Resend):
+**marcos.andersen@sysmanager.com.br**.
+
+### 13.1 GitHub — código-fonte e controle de versão
+
+- **Repositório:** https://github.com/marcosandersensys/RAG
+- **Dono:** `marcosandersensys` — conta pessoal do GitHub (**não** é uma
+  organização). Único colaborador hoje é o próprio dono, com papel `admin`.
+- **Branch de produção:** `main`. **Sem branch protection configurada** —
+  qualquer colaborador com acesso de escrita pode dar push direto em `main`
+  (na prática, o fluxo observado neste handover foi sempre via Pull Request,
+  mas isso não é tecnicamente obrigatório hoje; considere ativar branch
+  protection em Settings → Branches se quiser exigir PR + review).
+- **Todo push em `main` dispara deploy automático em produção na Vercel**
+  (§13.2/§3) — não há passo manual de deploy.
+- **Como conseguir acesso de escrita:** o dono precisa ir em
+  `github.com/marcosandersensys/RAG` → **Settings → Collaborators and
+  teams → Add people**, e convidar pelo usuário ou email do GitHub da nova
+  pessoa. Como é um repositório de conta pessoal (não uma organização), não
+  existe conceito de "time"/permissão granular por equipe — só convite
+  direto de colaborador, com um papel (ex: Write, Admin).
+- **Visibilidade:** o repositório aparenta ser público (é o único
+  repositório público da conta `marcosandersensys`); confirme em
+  Settings → General se isso mudou. Mesmo público, só colaboradores
+  convidados podem fazer push.
+
+### 13.2 Vercel — hospedagem, build e deploy
+
+- **Time:** SYSCBO (slug `syscbo`, ID `team_nKyPSticTn3K3JFvsW5hr84g`,
+  plano Hobby).
+- **Projeto:** `rag-status` (ID `prj_y807HlLNdapADBIBJgprT0nzisfv`,
+  framework detectado: FastAPI).
+- **URLs:** produção em https://rag-status.vercel.app, com aliases
+  automáticos adicionais (`rag-status-syscbo.vercel.app` e uma variante com
+  o nome do dono) apontando para o mesmo deployment.
+- **Deploy 100% via integração Git nativa** com o repositório GitHub acima —
+  não há passo manual: push em `main` = build + deploy automático em
+  produção; qualquer Pull Request gera um preview deployment automático,
+  visível como o check `Vercel` no próprio PR (é assim que se confirma que
+  o build passou antes de mesclar).
+- **Sem ambiente de staging** — produção é a única branch com deploy
+  contínuo real (ver também §11, Limitações Conhecidas).
+- **Como conseguir acesso:** quem administra o time SYSCBO precisa ir em
+  **vercel.com → time SYSCBO → Settings → Members** (ou
+  `vercel.com/teams/syscbo/settings/members`) e convidar por email. Um
+  mantenedor técnico normalmente precisa de pelo menos o papel **Member**
+  para ver logs de função, deployments e variáveis de ambiente do projeto
+  `rag-status`.
+- **Variáveis de ambiente** (nomes — propósito de cada uma detalhado em
+  §3): `DATABASE_URL`, `CRON_SECRET`, `RESEND_API_KEY`,
+  `RESEND_FROM_EMAIL` (opcional). Ficam em **Project Settings →
+  Environment Variables** do projeto `rag-status`; o valor só fica visível
+  a quem tiver papel suficiente no time.
+- O **cron job** do resumo diário (§5.1) é configurado inteiramente via
+  `vercel.json` (versionado no repo) — não há nada adicional para
+  configurar manualmente no dashboard além das env vars acima.
+
+### 13.3 Banco de dados — Neon Postgres
+
+- O Postgres foi conectado ao projeto via a **integração nativa da Vercel**
+  (Project → aba **Storage** → **Connect Database** → **Neon**, free tier —
+  o mesmo passo descrito no `README.md`), e não como uma conta Neon
+  avulsa criada independentemente em neon.tech.
+- **Acesso ao console do Neon** (para rodar queries manuais, ver métricas
+  de uso, etc.): dentro do projeto `rag-status` na Vercel → aba
+  **Storage** → o banco conectado deve ter um link do tipo "Open in Neon"
+  que autentica via a própria sessão da Vercel (SSO da integração) — não é
+  necessário criar/logar numa conta Neon separada para esse uso básico. Se
+  precisar de acesso mais avançado direto no Neon (branching de banco,
+  billing próprio, etc.), confirme com quem fez a configuração original se
+  existe uma conta Neon dedicada por trás da integração.
+- **Para rodar os scripts de manutenção localmente** (`scripts/*.py`,
+  §8) contra o banco de produção, é preciso o valor da própria
+  `DATABASE_URL` — pegue-o em Vercel → Project Settings → Environment
+  Variables (exige acesso ao time Vercel, §13.2). **Nunca** commitar esse
+  valor no repositório.
+- **Região:** `sa-east-1` (São Paulo) — deliberadamente igual à região da
+  função serverless (`gru1`) para minimizar latência (justificativa
+  completa em §3).
+
+### 13.4 Resend — envio do resumo diário por email
+
+- Usado exclusivamente pela rota `GET /api/cron/resumo-diario` (§5.1) para
+  enviar o resumo executivo diário por email.
+- A chave de API vive somente como a variável de ambiente
+  `RESEND_API_KEY` na Vercel (§13.2/§3) — o acesso ao **console da conta
+  Resend** em si (resend.com, para trocar a chave, ver logs de envio,
+  configurar domínio de remetente, etc.) **não está documentado** neste
+  handover; confirme com o proprietário atual (§13, provavelmente o mesmo
+  dono do GitHub/Vercel).
+- Sem essa variável configurada (ou com uma chave inválida/revogada), o
+  cron falha de forma silenciosa do ponto de vista do usuário final — só
+  aparece nos logs de função da Vercel (ver §11, Limitações Conhecidas).
+
+### 13.5 Acesso à aplicação em si (não é infraestrutura)
+
+Distinto de tudo acima: é o **login dentro do próprio RAG Status**
+(email/senha, tabela `pessoas`, §6) — não dá nenhum acesso a
+código/deploy/banco, só ao uso funcional da aplicação, conforme o papel
+(RBAC, §6.3).
+
+- Estado atual de produção (§6.3): 1 conta `admin` (M. Andersen — acesso
+  total nativo, papel não ligado a nenhuma BU) e 3 `bu_director` com
+  `acesso_full=1`.
+- Um mantenedor técnico **não precisa** de uma conta de aplicação só para
+  dar manutenção ao código/infraestrutura — só quando também for
+  operar/testar a aplicação como usuário final.
+- Contas novas são criadas via **Admin → Pessoas** dentro do próprio app
+  (exige uma conta com `acesso_full`/`admin`) ou, para o setup inicial, via
+  `scripts/migrate_auth.py` (§8) direto no banco. Senha padrão
+  `SysManager@2026`, com troca obrigatória no primeiro login (§6.1).
+
+### 13.6 Resumo rápido — "preciso de quê para fazer o quê"
+
+| Preciso de... | Acesso necessário | Onde conseguir |
+|---|---|---|
+| Ler/alterar código, abrir Pull Request | Colaborador no repositório GitHub | Dono (`marcosandersensys`) → Settings → Collaborators and teams |
+| Ver logs de função, deployments, variáveis de ambiente | Membro do time Vercel SYSCBO | Dono do time → Team Settings → Members |
+| Rodar `scripts/*.py` contra o banco de produção | Valor de `DATABASE_URL` | Vercel → Project Settings → Environment Variables (exige o acesso acima) |
+| Consultar/alterar dados direto no Postgres fora dos scripts | Console do Neon | Vercel → projeto `rag-status` → aba Storage → link para o Neon |
+| Depurar/alterar o envio de email do resumo diário | Acesso à conta Resend | Confirmar com o proprietário atual — não documentado neste handover |
+| Usar a aplicação como usuário final | Login de uma `pessoa` cadastrada | Admin → Pessoas, dentro do próprio app |
