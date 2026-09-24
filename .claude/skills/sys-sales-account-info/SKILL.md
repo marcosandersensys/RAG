@@ -1,6 +1,6 @@
 ---
-name: sales-account-info
-description: Recebe o nome de uma conta (cliente ou prospect) e devolve a classificação de segmentação SysManager nas duas dimensões obrigatórias — Dimensão 1 Industry/Setor Vertical (Indústria, Sub-indústria, critério objetivo, drivers de serviço e posicionamento) e Dimensão 2 Ownership/Tipo de Propriedade (tipo, critério objetivo, comportamento de compra e sinais de GTM). Use sempre que o usuário pedir "info da conta", "classificar conta", "segmentar cliente/prospect", "qual a indústria/ownership de X", "perfil de compra de X", ou citar /sales-account-info.
+name: sys-sales-account-info
+description: Recebe o nome de uma conta (cliente ou prospect) e devolve a classificação de segmentação SysManager nas duas dimensões obrigatórias — Dimensão 1 Industry/Setor Vertical (Indústria, Sub-indústria, critério objetivo, drivers de serviço e posicionamento) e Dimensão 2 Ownership/Tipo de Propriedade (tipo, critério objetivo, comportamento de compra e sinais de GTM). Use sempre que o usuário pedir "info da conta", "classificar conta", "segmentar cliente/prospect", "qual a indústria/ownership de X", "perfil de compra de X", ou citar /sys-sales-account-info.
 ---
 
 # Sales Account Info — Segmentação Industry × Ownership
